@@ -23,6 +23,7 @@ function text(value: unknown, field: string): string {
   return value.trim();
 }
 
+/** Converts untrusted model output into one approved, bounded task definition. */
 function validateTask(value: unknown, index: number, tools: Tool[]): PlannedTask {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error(`Task ${index + 1} must be an object.`);
@@ -46,6 +47,7 @@ function validateTask(value: unknown, index: number, tools: Tool[]): PlannedTask
   };
 }
 
+/** Enforces evidence requirements that the probabilistic planner may omit. */
 function addRequiredCoverage(goal: string, tasks: PlannedTask[]): PlannedTask[] {
   const result = [...tasks];
   const hasTool = (name: string) => result.some((task) => task.toolName === name);
@@ -84,6 +86,7 @@ function addRequiredCoverage(goal: string, tasks: PlannedTask[]): PlannedTask[] 
   return result.slice(0, 5);
 }
 
+/** Uses the LLM for decomposition, then validates and augments its proposed plan. */
 export async function createPlan(goal: string): Promise<ExecutionPlan> {
   const response = await fetch(`${ollamaBaseUrl}/api/chat`, {
     method: "POST",
@@ -132,6 +135,7 @@ export async function createPlan(goal: string): Promise<ExecutionPlan> {
   return { goal, tasks };
 }
 
+/** Produces a final response from execution state without rerunning any task. */
 export async function synthesizePlan(plan: ExecutionPlan): Promise<string> {
   const response = await fetch(`${ollamaBaseUrl}/api/chat`, {
     method: "POST",

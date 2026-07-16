@@ -146,3 +146,6 @@ To observe retry behavior without breaking a real dependency:
 ```bash
 npm run plan -- --simulate-transient-failure
 ```
+
+See `docs/module-7-planning.md` for the detailed architecture, execution trace,
+retry classification, and recovery walkthrough.

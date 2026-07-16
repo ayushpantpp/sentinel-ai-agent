@@ -5,6 +5,7 @@ export interface ExecutionOptions {
   simulateFirstTransientFailure?: boolean;
 }
 
+/** Separates transient dependency failures from permanent contract failures. */
 function isRetryable(error: string): boolean {
   return !/must be|unapproved|unknown tool|invalid json/i.test(error);
 }
@@ -18,6 +19,7 @@ async function executeTask(task: ExecutionTask, simulateFailure: boolean): Promi
   return tool.execute(task.input);
 }
 
+/** Runs validated tasks in order and applies bounded retry/recovery policies. */
 export async function executePlan(
   plan: ExecutionPlan,
   onEvent: (event: PlanEvent) => void,
