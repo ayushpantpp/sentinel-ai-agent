@@ -67,12 +67,18 @@ async function health() {
       return { ready: false, latencyMs: Math.round(performance.now() - startedAt) };
     }
   };
-  const [ollama, chroma, runbookIndex] = await Promise.all([
+  const [ollama, chroma, agenticAiMcp, runbookIndex] = await Promise.all([
     check("http://127.0.0.1:11434/api/tags"),
     check("http://127.0.0.1:8000/api/v2/heartbeat"),
+    check(
+      new URL(
+        "/health",
+        process.env.AGENTIC_AI_MCP_URL ?? "http://127.0.0.1:3001/mcp"
+      ).toString()
+    ),
     runbookIndexHealth()
   ]);
-  return { api: { ready: true }, ollama, chroma, runbookIndex };
+  return { api: { ready: true }, ollama, chroma, agenticAiMcp, runbookIndex };
 }
 
 async function listResources() {

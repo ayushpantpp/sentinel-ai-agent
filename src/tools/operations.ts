@@ -10,6 +10,7 @@ import {
   requireString,
   type Tool
 } from "./contracts.js";
+import { orchestrateAgenticApi } from "./agentic-ai-mcp.js";
 
 const runbookDirectory = join(process.cwd(), "data/runbooks");
 const logFile = join(process.cwd(), "data/logs/operations.log");
@@ -204,6 +205,7 @@ export const createMockSlackNotification: Tool<Record<string, unknown>> = {
 };
 
 export const tools: Tool[] = [
+  orchestrateAgenticApi,
   searchKnowledge,
   searchLogs,
   searchRunbook,

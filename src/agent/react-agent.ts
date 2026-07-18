@@ -140,6 +140,15 @@ function transcript(steps: AgentStep[]): string {
 
 export function requiredEvidenceDecision(question: string, steps: AgentStep[]): ToolDecision | undefined {
   const usedTools = new Set(steps.map((step) => step.decision.toolName));
+  if (/\b(aircraft|fleet|deliver(?:y|ies)|maintenance)\b/i.test(question)
+    && !usedTools.has("orchestrateAgenticApi")) {
+    return {
+      type: "tool",
+      rationale: "The goal requires Agentic AI orchestration data, which is available through its MCP server.",
+      toolName: "orchestrateAgenticApi",
+      input: { question }
+    };
+  }
   const jiraDenied = /\b(do not|don't|never)\b.{0,40}\b(create|open|file)\b.{0,40}\bjira\b/i.test(question);
   const slackDenied = /\b(do not|don't|never)\b.{0,40}\b(send|create|post)\b.{0,40}\bslack\b/i.test(question);
   if (!jiraDenied
@@ -273,10 +282,15 @@ export async function reflect(
   onPrompt?: (prompt: LlmPrompt) => void,
   onResponse?: (response: LlmResponse) => void
 ): Promise<Reflection> {
+  const agenticMcpReflection = reflectOnAgenticMcpResult(decision, observation);
   const deterministic = reflectOnExplicitLogThreshold(question, observation);
   if (deterministic) return deterministic;
   const value = await modelJson(
-    `You are the reflection component of Sentinel AI. Evaluate whether all parts of the user goal can now be answered. If the goal requests a documented action and only logs were retrieved, sufficient must be false. Return JSON only. Do not add facts absent from the observation.`,
+    `You are the reflection component of Sentinel AI. Evaluate whether all parts of the user goal can now be answered. If the goal requests a documented action and only logs were retrieved, sufficient must be false. Return JSON only. Do not add facts absent from the observation.${
+      agenticMcpReflection
+        ? " The observation is a successful response from the dedicated Agentic AI MCP orchestrator. Treat its customer-scoped result as the complete available answer to this request; do not speculate about missing external records."
+        : ""
+    }`,
     JSON.stringify({ question, previousSteps, action: decision, observation }),
     {
       type: "object",
@@ -290,13 +304,38 @@ export async function reflect(
     onPrompt,
     onResponse
   );
+  // Keep the LLM reflection visible, then enforce the trusted MCP boundary so
+  // speculative completeness language cannot replace the orchestrator answer.
+  if (agenticMcpReflection) return agenticMcpReflection;
   if (typeof value.sufficient !== "boolean") throw new Error("Reflection field 'sufficient' must be boolean.");
-  const nextStep = requiredText(value.nextStep, "nextStep");
+  const nextStep = typeof value.nextStep === "string" && value.nextStep.trim()
+    ? value.nextStep.trim()
+    : value.sufficient
+      ? "Answer from the retrieved evidence."
+      : "Continue gathering the evidence required by the user goal.";
   const canAnswerNow = /^(answer|respond|finish|provide)/i.test(nextStep);
   return {
     sufficient: value.sufficient && canAnswerNow,
     summary: requiredText(value.summary, "summary"),
     nextStep
+  };
+}
+
+function reflectOnAgenticMcpResult(
+  decision: ToolDecision,
+  observation: unknown
+): Reflection | undefined {
+  if (decision.toolName !== "orchestrateAgenticApi"
+    || typeof observation !== "object"
+    || observation === null) return undefined;
+  const result = observation as { success?: boolean; data?: unknown };
+  if (!result.success || typeof result.data !== "object" || result.data === null) return undefined;
+  const answer = (result.data as { answer?: unknown }).answer;
+  if (typeof answer !== "string" || !answer.trim()) return undefined;
+  return {
+    sufficient: true,
+    summary: answer.trim(),
+    nextStep: "Answer directly with the Agentic AI MCP result."
   };
 }
 

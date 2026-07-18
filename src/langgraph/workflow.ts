@@ -158,6 +158,8 @@ export function createSentinelGraph(options: GraphWorkflowOptions) {
   const finishNode = (state: SentinelGraphState) => {
     const answer = state.decision?.type === "answer"
       ? state.decision.answer
+      : state.reflection?.sufficient
+        ? state.reflection.summary
       : `Stopped after ${iterationLimit} iterations without enough evidence.`;
     options.onEvent({
       stage: "answer",
@@ -174,7 +176,7 @@ export function createSentinelGraph(options: GraphWorkflowOptions) {
   const routeDecision = (state: SentinelGraphState): "execute" | "finish" =>
     state.decision?.type === "tool" ? "execute" : "finish";
   const routeReflection = (state: SentinelGraphState): "decide" | "finish" =>
-    state.iteration >= iterationLimit ? "finish" : "decide";
+    state.reflection?.sufficient || state.iteration >= iterationLimit ? "finish" : "decide";
 
   return new StateGraph(GraphState)
     .addNode("decide", decideNode)

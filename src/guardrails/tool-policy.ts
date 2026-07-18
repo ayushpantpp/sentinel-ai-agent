@@ -11,8 +11,9 @@ export interface ToolPolicyOptions {
 }
 
 const rolePermissions: Record<AgentRole, Set<string>> = {
-  viewer: new Set(["searchKnowledge", "searchLogs", "searchRunbook", "searchMemory"]),
+  viewer: new Set(["orchestrateAgenticApi", "searchKnowledge", "searchLogs", "searchRunbook", "searchMemory"]),
   operator: new Set([
+    "orchestrateAgenticApi",
     "searchKnowledge",
     "searchLogs",
     "searchRunbook",

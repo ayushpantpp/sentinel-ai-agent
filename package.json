@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@langchain/langgraph": "^1.4.8",
+    "@modelcontextprotocol/client": "^2.0.0-beta.4",
     "chromadb": "^3.5.0"
   },
   "devDependencies": {

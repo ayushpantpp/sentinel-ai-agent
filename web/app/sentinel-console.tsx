@@ -53,6 +53,7 @@ type Health = {
   api: { ready: boolean };
   ollama: { ready: boolean; latencyMs: number };
   chroma: { ready: boolean; latencyMs: number };
+  agenticAiMcp: { ready: boolean; latencyMs: number };
   runbookIndex: { ready: boolean; totalChunks?: number; newlyEmbedded?: number; error?: string };
 };
 
@@ -75,6 +76,10 @@ const iconMap = {
 };
 
 function eventStep(event: AgentEvent, index: number): TraceStep {
+  const action = event.stage === "action" && typeof event.content === "object" && event.content !== null
+    ? event.content as { tool?: string; input?: Record<string, unknown> }
+    : undefined;
+  const isAgenticMcpCall = action?.tool === "orchestrateAgenticApi";
   const labels: Record<string, string> = {
     "prompt-guard": "Prompt guard",
     prompt: "Prompt accepted",
@@ -105,7 +110,11 @@ function eventStep(event: AgentEvent, index: number): TraceStep {
   const llmResponse = event.stage === "llm-response" && typeof event.content === "object" && event.content !== null
     ? event.content as TraceStep["llmResponse"]
     : undefined;
-  const detail = llmPrompt
+  const detail = isAgenticMcpCall
+    ? `Calling the Agentic AI "orchestrate" tool over MCP at ${
+      process.env.NEXT_PUBLIC_AGENTIC_AI_MCP_URL ?? "http://127.0.0.1:3001/mcp"
+    } with question: ${String(action?.input?.question ?? "")}`
+    : llmPrompt
     ? `Sending system and user messages to ${llmPrompt.model} at temperature ${llmPrompt.temperature}.`
     : llmResponse
       ? `${llmResponse.model} returned structured JSON for this iteration.`
@@ -121,7 +130,7 @@ function eventStep(event: AgentEvent, index: number): TraceStep {
     : undefined;
   return {
     id: String(index + 1).padStart(2, "0"),
-    label: labels[event.stage] ?? event.stage,
+    label: isAgenticMcpCall ? "MCP call · Agentic AI" : labels[event.stage] ?? event.stage,
     detail,
     status: "active",
     meta: [
@@ -342,6 +351,11 @@ export function SentinelConsole() {
             <div className="engine-row"><Database size={15} /><span>ChromaDB</span><i className={`status-dot ${health?.chroma.ready ? "" : "offline"}`} /></div>
             <strong>{health?.runbookIndex?.ready ? `${health.runbookIndex.totalChunks ?? 0} indexed chunks` : "Index unavailable"}</strong>
             <small>{health?.runbookIndex?.ready ? "semantic runbooks" : "keyword fallback active"}</small>
+          </div>
+          <div className="engine-card">
+            <div className="engine-row"><Server size={15} /><span>Agentic AI · MCP</span><i className={`status-dot ${health?.agenticAiMcp?.ready ? "" : "offline"}`} /></div>
+            <strong>{health?.agenticAiMcp?.ready ? "Connected" : "Unavailable"}</strong>
+            <small>{health?.agenticAiMcp?.ready ? `Streamable HTTP · ${health.agenticAiMcp.latencyMs} ms` : "Start Agentic AI on port 3001"}</small>
           </div>
         </div>
 
