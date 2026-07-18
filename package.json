@@ -3,15 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "chat": "tsx src/chat.ts",
-    "rag": "tsx src/rag.ts",
-    "tool": "tsx src/tools/cli.ts",
-    "memory": "tsx src/memory/cli.ts",
-    "agent": "tsx src/agent/cli.ts",
-    "plan": "tsx src/planning/cli.ts",
+    "api": "tsx src/server.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@langchain/langgraph": "^1.4.8",
     "chromadb": "^3.5.0"
   },
   "devDependencies": {

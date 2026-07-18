@@ -1,5 +1,8 @@
+import { createReadStream } from "node:fs";
 import { appendFile, mkdir, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { createInterface } from "node:readline";
+import { searchRunbooksSemantically } from "../retrieval/runbook-vector-store.js";
 import {
   optionalBoolean,
   optionalNumber,
@@ -55,7 +58,11 @@ export const searchKnowledge: Tool<SearchMatch[]> = {
   },
   async execute(input) {
     const query = requireString(requireObject(input), "query");
-    return searchMarkdown(query);
+    try {
+      return await searchRunbooksSemantically(query);
+    } catch {
+      return searchMarkdown(query);
+    }
   }
 };
 
@@ -73,6 +80,13 @@ export const searchRunbook: Tool<SearchMatch[]> = {
     const fields = requireObject(input);
     const query = requireString(fields, "query");
     const filename = fields.filename === undefined ? undefined : requireString(fields, "filename");
+    if (!filename) {
+      try {
+        return await searchRunbooksSemantically(query);
+      } catch {
+        return searchMarkdown(query);
+      }
+    }
     return searchMarkdown(query, filename);
   }
 };
@@ -85,9 +99,20 @@ export const searchLogs: Tool<string[]> = {
   },
   async execute(input) {
     const query = requireString(requireObject(input), "query");
-    const queryTerms = terms(query);
-    const lines = (await readFile(logFile, "utf8")).split("\n").filter(Boolean);
-    return lines.filter((line) => queryTerms.some((term) => line.toLowerCase().includes(term)));
+    const ranked: Array<{ line: string; score: number }> = [];
+    const lines = createInterface({
+      input: createReadStream(logFile, { encoding: "utf8" }),
+      crlfDelay: Infinity
+    });
+    for await (const line of lines) {
+      if (!line) continue;
+      const score = relevance(query, line);
+      if (score > 0) ranked.push({ line, score });
+    }
+    ranked.sort((left, right) => right.score - left.score);
+    const highestScore = ranked[0]?.score ?? 0;
+    const minimumScore = Math.max(2, highestScore - 1);
+    return ranked.filter((match) => match.score >= minimumScore).map((match) => match.line);
   }
 };
 
