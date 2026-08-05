@@ -11,6 +11,7 @@ import {
   type Tool
 } from "./contracts.js";
 import { orchestrateAgenticApi } from "./agentic-ai-mcp.js";
+import { getWeatherViaMcp } from "./weather-mcp.js";
 
 const runbookDirectory = join(process.cwd(), "data/runbooks");
 const logFile = join(process.cwd(), "data/logs/operations.log");
@@ -112,8 +113,11 @@ export const searchLogs: Tool<string[]> = {
     }
     ranked.sort((left, right) => right.score - left.score);
     const highestScore = ranked[0]?.score ?? 0;
-    const minimumScore = Math.max(2, highestScore - 1);
-    return ranked.filter((match) => match.score >= minimumScore).map((match) => match.line);
+    const minimumScore = Math.max(2, highestScore - 2);
+    return ranked
+      .filter((match) => match.score >= minimumScore)
+      .slice(0, 20)
+      .map((match) => match.line);
   }
 };
 
@@ -206,6 +210,7 @@ export const createMockSlackNotification: Tool<Record<string, unknown>> = {
 
 export const tools: Tool[] = [
   orchestrateAgenticApi,
+  getWeatherViaMcp,
   searchKnowledge,
   searchLogs,
   searchRunbook,

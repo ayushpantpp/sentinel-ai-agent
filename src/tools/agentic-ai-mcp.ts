@@ -3,7 +3,7 @@ import { requireObject, requireString, type Tool } from "./contracts.js";
 
 const defaultMcpUrl = "http://127.0.0.1:3001/mcp";
 
-async function callOrchestrator(question: string): Promise<unknown> {
+async function callOrchestrator(question: string, tailNumbers?: string[]): Promise<unknown> {
   const client = new Client({
     name: "first-ai-agent",
     version: "0.1.0"
@@ -16,7 +16,7 @@ async function callOrchestrator(question: string): Promise<unknown> {
     await client.connect(transport);
     const result = await client.callTool({
       name: "orchestrate",
-      arguments: { question }
+      arguments: { question, ...(tailNumbers?.length ? { tailNumbers } : {}) }
     });
 
     if (result.isError) {
@@ -41,11 +41,18 @@ export const orchestrateAgenticApi: Tool = {
     inputSchema: {
       type: "object",
       required: ["question"],
-      properties: { question: { type: "string" } }
+      properties: {
+        question: { type: "string" },
+        tailNumbers: { type: "array", items: { type: "string" } }
+      }
     }
   },
   async execute(input) {
     const question = requireString(requireObject(input), "question");
-    return callOrchestrator(question);
+    const value = requireObject(input).tailNumbers;
+    const tailNumbers = Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+      : undefined;
+    return callOrchestrator(question, tailNumbers);
   }
 };

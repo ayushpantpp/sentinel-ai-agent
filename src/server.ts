@@ -14,6 +14,7 @@ import { assessPrompt } from "./guardrails/prompt-guard.js";
 import { ToolPolicy, type AgentRole } from "./guardrails/tool-policy.js";
 import { runSentinelGraph } from "./langgraph/workflow.js";
 import type { AgentEvent } from "./agent/react-agent.js";
+import { inspectMcpConnections } from "./mcp/connection-manager.js";
 import {
   refreshRunbookEmbeddings,
   runbookIndexHealth,
@@ -228,6 +229,10 @@ createServer(async (request, response) => {
     }
     if (request.method === "GET" && request.url === "/api/resources") {
       json(response, 200, await listResources());
+      return;
+    }
+    if (request.method === "GET" && request.url === "/api/mcp/connections") {
+      json(response, 200, await inspectMcpConnections());
       return;
     }
     if (request.method === "POST" && request.url === "/api/resources") {

@@ -175,8 +175,11 @@ export function createSentinelGraph(options: GraphWorkflowOptions) {
 
   const routeDecision = (state: SentinelGraphState): "execute" | "finish" =>
     state.decision?.type === "tool" ? "execute" : "finish";
-  const routeReflection = (state: SentinelGraphState): "decide" | "finish" =>
-    state.reflection?.sufficient || state.iteration >= iterationLimit ? "finish" : "decide";
+  const routeReflection = (state: SentinelGraphState): "decide" | "finish" => {
+    const requiredTool = requiredEvidenceDecision(state.goal, state.steps);
+    if (requiredTool && state.iteration < iterationLimit) return "decide";
+    return state.reflection?.sufficient || state.iteration >= iterationLimit ? "finish" : "decide";
+  };
 
   return new StateGraph(GraphState)
     .addNode("decide", decideNode)

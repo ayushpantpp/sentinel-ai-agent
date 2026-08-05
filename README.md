@@ -15,6 +15,12 @@ npm run api
 Terminal 2:
 
 ```bash
+npm run weather:mcp
+```
+
+Terminal 3:
+
+```bash
 cd web
 npm install
 npm run dev
@@ -28,6 +34,11 @@ Open `http://localhost:3000`.
 - Ollama: `http://127.0.0.1:11434`
 - ChromaDB health check: `http://127.0.0.1:8000`
 - Agentic AI MCP server: `http://127.0.0.1:3001/mcp`
+- Weather MCP server: `http://127.0.0.1:3002/mcp`
+
+The weather server exposes `getWeather`, which geocodes a city and retrieves
+current conditions from Open-Meteo. The web console's **MCP connections** view
+discovers tools from every server in `config/mcp-servers.json`.
 
 Fleet, aircraft, delivery, and maintenance questions are delegated to Agentic
 AI through its `orchestrate` MCP tool. Start Agentic AI separately before using

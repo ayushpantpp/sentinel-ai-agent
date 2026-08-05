@@ -140,13 +140,53 @@ function transcript(steps: AgentStep[]): string {
 
 export function requiredEvidenceDecision(question: string, steps: AgentStep[]): ToolDecision | undefined {
   const usedTools = new Set(steps.map((step) => step.decision.toolName));
+  const weatherRequest = /\b(weather|temperature|humidity|rain|wind)\b/i.test(question);
+  if (weatherRequest && !usedTools.has("getWeatherViaMcp")) {
+    const location = question.match(/\b(?:in|for|at)\s+([a-z][a-z .'-]{1,60}?)(?:\?|$|\s+(?:today|currently|right now))/i)?.[1]?.trim();
+    if (location) {
+      return {
+        type: "tool",
+        rationale: "Current weather is external data and must be retrieved through the Weather MCP server.",
+        toolName: "getWeatherViaMcp",
+        input: { city: location }
+      };
+    }
+  }
+  if (/\blogs?\b/i.test(question) && !usedTools.has("searchLogs")) {
+    return {
+      type: "tool",
+      rationale: "The goal explicitly requires local log evidence, which must be retrieved before external enrichment.",
+      toolName: "searchLogs",
+      input: { query: question }
+    };
+  }
   if (/\b(aircraft|fleet|deliver(?:y|ies)|maintenance)\b/i.test(question)
     && !usedTools.has("orchestrateAgenticApi")) {
+    const retrievedLogs = steps
+      .filter((step) => step.decision.toolName === "searchLogs")
+      .flatMap((step) => {
+        if (typeof step.observation !== "object" || step.observation === null) return [];
+        const data = (step.observation as { data?: unknown }).data;
+        return Array.isArray(data)
+          ? data.filter((entry): entry is string => typeof entry === "string")
+          : [];
+      });
+    const tailNumbers = new Set<string>();
+    for (const line of retrievedLogs) {
+      const grounded = line.match(/\bgrounded_tail_numbers="([^"]+)"/i)?.[1];
+      for (const tailNumber of grounded?.split(",") ?? []) {
+        if (tailNumber.trim()) tailNumbers.add(tailNumber.trim().toUpperCase());
+      }
+      if (/\bgrounding_required=true\b/i.test(line)) {
+        const tailNumber = line.match(/\btail_number=([A-Z0-9-]+)/i)?.[1];
+        if (tailNumber) tailNumbers.add(tailNumber.toUpperCase());
+      }
+    }
     return {
       type: "tool",
       rationale: "The goal requires Agentic AI orchestration data, which is available through its MCP server.",
       toolName: "orchestrateAgenticApi",
-      input: { question }
+      input: { question, ...(tailNumbers.size ? { tailNumbers: [...tailNumbers] } : {}) }
     };
   }
   const jiraDenied = /\b(do not|don't|never)\b.{0,40}\b(create|open|file)\b.{0,40}\bjira\b/i.test(question);
@@ -192,14 +232,6 @@ export function requiredEvidenceDecision(question: string, steps: AgentStep[]): 
         serviceUnavailable: /\b(service unavailable|outage)\b/i.test(question),
         errorRatePercent: errorRateMatch ? Number(errorRateMatch[1]) : 0
       }
-    };
-  }
-  if (/\blogs?\b/i.test(question) && !usedTools.has("searchLogs")) {
-    return {
-      type: "tool",
-      rationale: "The goal explicitly requires local log evidence, which has not been retrieved yet.",
-      toolName: "searchLogs",
-      input: { query: question }
     };
   }
   if (/\b(documented|runbook|procedure|next action)\b/i.test(question)
@@ -282,13 +314,21 @@ export async function reflect(
   onPrompt?: (prompt: LlmPrompt) => void,
   onResponse?: (response: LlmResponse) => void
 ): Promise<Reflection> {
+  const combinedFleetReflection = reflectOnCombinedFleetEvidence(
+    decision,
+    observation,
+    previousSteps
+  );
+  if (combinedFleetReflection) return combinedFleetReflection;
   const agenticMcpReflection = reflectOnAgenticMcpResult(decision, observation);
+  const requiresCombinedEvidence = /\blogs?\b/i.test(question)
+    && previousSteps.some((step) => step.decision.toolName === "searchLogs");
   const deterministic = reflectOnExplicitLogThreshold(question, observation);
   if (deterministic) return deterministic;
   const value = await modelJson(
-    `You are the reflection component of Sentinel AI. Evaluate whether all parts of the user goal can now be answered. If the goal requests a documented action and only logs were retrieved, sufficient must be false. Return JSON only. Do not add facts absent from the observation.${
+    `You are the reflection component of Sentinel AI. Evaluate whether all parts of the user goal can now be answered. If the goal requests a documented action and only logs were retrieved, sufficient must be false. Return JSON only. Do not add facts absent from the observations. The summary must be the final user-facing answer supported by the accumulated evidence, never a plan or a statement about what will be done.${
       agenticMcpReflection
-        ? " The observation is a successful response from the dedicated Agentic AI MCP orchestrator. Treat its customer-scoped result as the complete available answer to this request; do not speculate about missing external records."
+        ? " The latest observation is a successful response from the dedicated Agentic AI MCP orchestrator. Correlate it with previous local-log observations when present; do not speculate about missing external records."
         : ""
     }`,
     JSON.stringify({ question, previousSteps, action: decision, observation }),
@@ -306,7 +346,7 @@ export async function reflect(
   );
   // Keep the LLM reflection visible, then enforce the trusted MCP boundary so
   // speculative completeness language cannot replace the orchestrator answer.
-  if (agenticMcpReflection) return agenticMcpReflection;
+  if (agenticMcpReflection && !requiresCombinedEvidence) return agenticMcpReflection;
   if (typeof value.sufficient !== "boolean") throw new Error("Reflection field 'sufficient' must be boolean.");
   const nextStep = typeof value.nextStep === "string" && value.nextStep.trim()
     ? value.nextStep.trim()
@@ -318,6 +358,71 @@ export async function reflect(
     sufficient: value.sufficient && canAnswerNow,
     summary: requiredText(value.summary, "summary"),
     nextStep
+  };
+}
+
+function reflectOnCombinedFleetEvidence(
+  decision: ToolDecision,
+  observation: unknown,
+  previousSteps: AgentStep[]
+): Reflection | undefined {
+  if (decision.toolName !== "orchestrateAgenticApi"
+    || typeof observation !== "object"
+    || observation === null) return undefined;
+  const result = observation as { success?: boolean; data?: unknown };
+  if (!result.success || typeof result.data !== "object" || result.data === null) return undefined;
+
+  const logLines = previousSteps
+    .filter((step) => step.decision.toolName === "searchLogs")
+    .flatMap((step) => {
+      if (typeof step.observation !== "object" || step.observation === null) return [];
+      const data = (step.observation as { data?: unknown }).data;
+      return Array.isArray(data)
+        ? data.filter((entry): entry is string => typeof entry === "string")
+        : [];
+    });
+  if (!logLines.length) return undefined;
+
+  const grounded = new Set<string>();
+  for (const line of logLines) {
+    const summary = line.match(/\bgrounded_tail_numbers="([^"]+)"/i)?.[1];
+    for (const tailNumber of summary?.split(",") ?? []) {
+      if (tailNumber.trim()) grounded.add(tailNumber.trim());
+    }
+    if (/\bgrounding_required=true\b/i.test(line)) {
+      const tailNumber = line.match(/\btail_number=([A-Z0-9-]+)/i)?.[1];
+      if (tailNumber) grounded.add(tailNumber);
+    }
+  }
+  if (!grounded.size) return undefined;
+
+  const mcpData = result.data as { mergedResponse?: unknown };
+  if (typeof mcpData.mergedResponse !== "object" || mcpData.mergedResponse === null) return undefined;
+  const records = Object.values(mcpData.mergedResponse as Record<string, unknown>)
+    .flatMap((value) => Array.isArray(value) ? value : [value])
+    .filter((value): value is Record<string, unknown> => typeof value === "object" && value !== null);
+  const customerNames = new Map(
+    records
+      .filter((record) => typeof record.id === "string" && typeof record.name === "string")
+      .map((record) => [record.id as string, record.name as string])
+  );
+  const fleet = records.filter((record) =>
+    typeof record.tailNumber === "string" && typeof record.model === "string"
+  );
+  const matches = [...grounded].map((tailNumber) => {
+    const aircraft = fleet.find((record) => record.tailNumber === tailNumber);
+    if (!aircraft) return undefined;
+    const owner = typeof aircraft.customerId === "string"
+      ? customerNames.get(aircraft.customerId) ?? aircraft.customerId
+      : "unknown owner";
+    return `${tailNumber} — ${aircraft.model as string}, owned by ${owner}`;
+  }).filter((value): value is string => Boolean(value));
+  if (matches.length !== grounded.size) return undefined;
+
+  return {
+    sufficient: true,
+    summary: `The local logs identify ${[...grounded].join(" and ")} as grounded. Authoritative fleet records confirm: ${matches.join("; ")}.`,
+    nextStep: "Answer with the correlated local-log and MCP fleet evidence."
   };
 }
 

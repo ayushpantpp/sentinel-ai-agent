@@ -1,0 +1,18 @@
+[
+  {
+    "id": "agentic-ai",
+    "name": "Agentic AI",
+    "description": "Authoritative fleet, customer, delivery, and maintenance operations.",
+    "url": "http://127.0.0.1:3001/mcp",
+    "healthUrl": "http://127.0.0.1:3001/health",
+    "access": "read"
+  },
+  {
+    "id": "weather",
+    "name": "Weather",
+    "description": "Current city weather from Open-Meteo through a local MCP server.",
+    "url": "http://127.0.0.1:3002/mcp",
+    "healthUrl": "http://127.0.0.1:3002/health",
+    "access": "read"
+  }
+]

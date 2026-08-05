@@ -8,6 +8,7 @@ import {
   Check,
   ChevronRight,
   CircleDot,
+  CloudSun,
   Database,
   FileText,
   Gauge,
@@ -15,6 +16,8 @@ import {
   Library,
   Plus,
   Pencil,
+  Plug,
+  RefreshCw,
   Search,
   Send,
   Server,
@@ -63,6 +66,18 @@ type AgentEvent = {
   metadata?: { durationMs?: number; source?: string; iteration?: number };
 };
 
+type McpConnection = {
+  id: string;
+  name: string;
+  description: string;
+  url: string;
+  access: "read" | "write";
+  ready: boolean;
+  latencyMs: number;
+  error?: string;
+  tools: Array<{ name: string; title?: string; description?: string; inputSchema: Record<string, unknown> }>;
+};
+
 const apiBaseUrl = "http://127.0.0.1:8787";
 
 const iconMap = {
@@ -80,6 +95,7 @@ function eventStep(event: AgentEvent, index: number): TraceStep {
     ? event.content as { tool?: string; input?: Record<string, unknown> }
     : undefined;
   const isAgenticMcpCall = action?.tool === "orchestrateAgenticApi";
+  const isWeatherMcpCall = action?.tool === "getWeatherViaMcp";
   const labels: Record<string, string> = {
     "prompt-guard": "Prompt guard",
     prompt: "Prompt accepted",
@@ -114,6 +130,8 @@ function eventStep(event: AgentEvent, index: number): TraceStep {
     ? `Calling the Agentic AI "orchestrate" tool over MCP at ${
       process.env.NEXT_PUBLIC_AGENTIC_AI_MCP_URL ?? "http://127.0.0.1:3001/mcp"
     } with question: ${String(action?.input?.question ?? "")}`
+    : isWeatherMcpCall
+      ? `Calling the Weather "getWeather" tool over MCP at http://127.0.0.1:3002/mcp for ${String(action?.input?.city ?? "the requested city")}.`
     : llmPrompt
     ? `Sending system and user messages to ${llmPrompt.model} at temperature ${llmPrompt.temperature}.`
     : llmResponse
@@ -130,7 +148,7 @@ function eventStep(event: AgentEvent, index: number): TraceStep {
     : undefined;
   return {
     id: String(index + 1).padStart(2, "0"),
-    label: isAgenticMcpCall ? "MCP call · Agentic AI" : labels[event.stage] ?? event.stage,
+    label: isAgenticMcpCall ? "MCP call · Agentic AI" : isWeatherMcpCall ? "MCP call · Weather" : labels[event.stage] ?? event.stage,
     detail,
     status: "active",
     meta: [
@@ -145,7 +163,7 @@ function eventStep(event: AgentEvent, index: number): TraceStep {
 }
 
 export function SentinelConsole() {
-  const [activeView, setActiveView] = useState<"trace" | "resources">("trace");
+  const [activeView, setActiveView] = useState<"trace" | "resources" | "connections">("trace");
   const [resources, setResources] = useState<Resource[]>([]);
   const [resourceFilter, setResourceFilter] = useState<"all" | "log" | "knowledge">("all");
   const [showAdd, setShowAdd] = useState(false);
@@ -160,6 +178,8 @@ export function SentinelConsole() {
   const [isUploadingLogs, setIsUploadingLogs] = useState(false);
   const [role, setRole] = useState<"operator" | "viewer">("operator");
   const [editingResource, setEditingResource] = useState<Resource | null>(null);
+  const [mcpConnections, setMcpConnections] = useState<McpConnection[]>([]);
+  const [isRefreshingConnections, setIsRefreshingConnections] = useState(false);
 
   useEffect(() => {
     fetch(`${apiBaseUrl}/api/resources`)
@@ -167,6 +187,19 @@ export function SentinelConsole() {
       .then((saved: Resource[]) => setResources(saved))
       .catch(() => setResources([]));
   }, []);
+
+  async function refreshMcpConnections() {
+    setIsRefreshingConnections(true);
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/mcp/connections`);
+      if (!response.ok) throw new Error("Unable to inspect MCP connections.");
+      setMcpConnections(await response.json() as McpConnection[]);
+    } catch (error) {
+      setRunError(error instanceof Error ? error.message : "Unable to inspect MCP connections.");
+    } finally {
+      setIsRefreshingConnections(false);
+    }
+  }
 
   useEffect(() => {
     const refresh = () => fetch(`${apiBaseUrl}/api/health`)
@@ -338,6 +371,9 @@ export function SentinelConsole() {
           <button className={activeView === "resources" ? "active" : ""} onClick={() => setActiveView("resources")}>
             <Library size={17} /><span>Knowledge & logs</span><kbd>⌘2</kbd>
           </button>
+          <button className={activeView === "connections" ? "active" : ""} onClick={() => { setActiveView("connections"); if (!mcpConnections.length) void refreshMcpConnections(); }}>
+            <Plug size={17} /><span>MCP connections</span><kbd>⌘3</kbd>
+          </button>
         </nav>
 
         <div className="sidebar-section">
@@ -369,8 +405,8 @@ export function SentinelConsole() {
       <section className="workspace">
         <header className="topbar">
           <div>
-            <div className="breadcrumb"><span>Sentinel AI</span><ChevronRight size={13} /><strong>{activeView === "trace" ? "Decision trace" : "Knowledge & logs"}</strong></div>
-            <p>{activeView === "trace" ? "Inspect how the agent reached its answer." : "Manage the evidence available to your local agent."}</p>
+            <div className="breadcrumb"><span>Sentinel AI</span><ChevronRight size={13} /><strong>{activeView === "trace" ? "Decision trace" : activeView === "resources" ? "Knowledge & logs" : "MCP connections"}</strong></div>
+            <p>{activeView === "trace" ? "Inspect how the agent reached its answer." : activeView === "resources" ? "Manage the evidence available to your local agent." : "Inspect configured servers and their discovered tools."}</p>
           </div>
           <div className={`health-pill ${allReady ? "" : "offline"}`}><span className={`pulse ${allReady ? "" : "offline"}`} />{allReady ? "All systems local" : "Local service unavailable"}</div>
         </header>
@@ -449,7 +485,7 @@ export function SentinelConsole() {
               </div>
             </aside>}
           </div>
-        ) : (
+        ) : activeView === "resources" ? (
           <section className="resources-view">
             <div className="resources-hero">
               <div><span className="eyebrow">Agent memory</span><h1>Knowledge & logs</h1><p>Control the evidence Sentinel can retrieve. New entries become available to future traces.</p></div>
@@ -480,6 +516,37 @@ export function SentinelConsole() {
                   </div>
                 </article>
               ))}
+            </div>
+          </section>
+        ) : (
+          <section className="connections-view">
+            <div className="connections-hero">
+              <div><span className="eyebrow">Model Context Protocol</span><h1>MCP connections</h1><p>Live discovery from the servers configured in <code>config/mcp-servers.json</code>.</p></div>
+              <button className="primary-button" onClick={() => void refreshMcpConnections()} disabled={isRefreshingConnections}><RefreshCw className={isRefreshingConnections ? "spin" : ""} size={15} />Refresh discovery</button>
+            </div>
+            <div className="connection-list">
+              {mcpConnections.map((connection) => (
+                <article className="connection-card" key={connection.id}>
+                  <div className="connection-head">
+                    <div className="connection-icon">{connection.id === "weather" ? <CloudSun size={20} /> : <Server size={20} />}</div>
+                    <div><h2>{connection.name}</h2><p>{connection.description}</p></div>
+                    <span className={`connection-status ${connection.ready ? "" : "offline"}`}><i className={`status-dot ${connection.ready ? "" : "offline"}`} />{connection.ready ? `${connection.latencyMs} ms` : "Offline"}</span>
+                  </div>
+                  <div className="connection-meta"><code>{connection.url}</code><span>{connection.access}-only</span><span>{connection.tools.length} tool{connection.tools.length === 1 ? "" : "s"}</span></div>
+                  {connection.error && <div className="connection-error">{connection.error}</div>}
+                  <div className="tool-list">
+                    {connection.tools.map((tool) => (
+                      <div className="tool-card" key={tool.name}>
+                        <div><strong>{tool.title ?? tool.name}</strong><code>{tool.name}</code></div>
+                        <p>{tool.description ?? "No description provided."}</p>
+                        <pre>{JSON.stringify(tool.inputSchema, null, 2)}</pre>
+                      </div>
+                    ))}
+                    {connection.ready && !connection.tools.length && <div className="no-evidence">Connected, but this server exposed no tools.</div>}
+                  </div>
+                </article>
+              ))}
+              {!mcpConnections.length && <div className="empty-flow"><CircleDot className={isRefreshingConnections ? "spin" : ""} size={18} />{isRefreshingConnections ? "Discovering MCP servers…" : "No MCP connections discovered."}</div>}
             </div>
           </section>
         )}
