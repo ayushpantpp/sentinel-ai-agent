@@ -1,0 +1,5 @@
+[
+  {"id":"c_lh","name":"Lufthansa","country":"Germany","segment":"Commercial Airline"},
+  {"id":"c_airbus","name":"Airbus","country":"France","segment":"Manufacturer"},
+  {"id":"c_klm","name":"KLM","country":"Netherlands","segment":"Commercial Airline"}
+]

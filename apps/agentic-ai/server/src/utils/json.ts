@@ -1,0 +1,1 @@
+export function extractJson(text: string): unknown { const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i); const value = fenced?.[1] ?? text; const start = value.indexOf("{"); const end = value.lastIndexOf("}"); if (start < 0 || end < start) throw new Error("LLM did not return JSON"); return JSON.parse(value.slice(start, end + 1)); }

@@ -4,8 +4,13 @@
   "private": true,
   "scripts": {
     "api": "tsx src/server.ts",
+    "agentic:mcp": "npm --prefix apps/agentic-ai run dev -w server",
+    "web": "npm --prefix web run dev",
     "weather:mcp": "tsx src/mcp/weather-server.ts",
-    "typecheck": "tsc --noEmit"
+    "dev": "concurrently -n api,web,agentic,weather -c blue,magenta,yellow,cyan \"npm run api\" \"npm run web\" \"npm run agentic:mcp\" \"npm run weather:mcp\"",
+    "setup": "npm install && npm --prefix web install && npm --prefix apps/agentic-ai install",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run typecheck && npm --prefix apps/agentic-ai test && npm --prefix web test && npm --prefix web run lint"
   },
   "dependencies": {
     "@langchain/langgraph": "^1.4.8",
@@ -17,6 +22,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "concurrently": "^9.2.1",
     "tsx": "^4.20.0",
     "typescript": "^5.8.0"
   }

@@ -3,7 +3,21 @@
 Sentinel AI is a local, API-based operations agent with a React web interface.
 The browser is the only user interface.
 
-## Start
+## Start everything
+
+Sentinel now includes the Agentic AI MCP server under `apps/agentic-ai`, so the
+complete learning project can be installed and pushed as one repository.
+
+```bash
+npm run setup
+npm run dev
+```
+
+This starts Sentinel API (`8787`), Sentinel web (`3000`), Agentic AI MCP
+(`3001`), and Weather MCP (`3002`). Ollama and ChromaDB remain external local
+services.
+
+## Start services separately
 
 Terminal 1:
 

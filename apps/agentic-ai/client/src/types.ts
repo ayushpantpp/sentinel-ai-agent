@@ -1,0 +1,3 @@
+export interface PlanStep { apiId: string; input: Record<string, string>; dependsOn: string[] }
+export interface LlmInteraction { stage: "intent_analysis" | "final_answer"; prompt: string; response: string; durationMs: number }
+export interface Result { question: string; analysis: { intent: string; entities: Record<string, string>; candidateApis: string[] }; plan: { intent: string; rationale: string; steps: PlanStep[] }; apiCalls: { apiId: string; endpoint: string; status: number; durationMs: number; data: unknown }[]; mergedResponse: Record<string, unknown>; llmInteractions: LlmInteraction[]; answer: string; durationMs: number }

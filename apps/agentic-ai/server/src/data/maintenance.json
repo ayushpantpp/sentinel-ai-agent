@@ -1,0 +1,4 @@
+[
+  {"id":"m-100","aircraftId":"a350-lh-01","status":"in_progress","type":"C-check","startedAt":"2026-07-08","estimatedCompletion":"2026-07-18"},
+  {"id":"m-101","aircraftId":"b747-lh-01","status":"scheduled","type":"Engine inspection","startedAt":"2026-07-20","estimatedCompletion":"2026-07-21"}
+]

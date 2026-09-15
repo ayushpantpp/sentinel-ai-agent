@@ -2,7 +2,7 @@
   {
     "id": "agentic-ai",
     "name": "Agentic AI",
-    "description": "Authoritative fleet, customer, delivery, and maintenance operations.",
+    "description": "Authoritative fleet, customer, delivery, and maintenance operations from apps/agentic-ai.",
     "url": "http://127.0.0.1:3001/mcp",
     "healthUrl": "http://127.0.0.1:3001/health",
     "access": "read"
