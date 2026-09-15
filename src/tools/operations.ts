@@ -10,7 +10,7 @@ import {
   requireString,
   type Tool
 } from "./contracts.js";
-import { orchestrateAgenticApi } from "./agentic-ai-mcp.js";
+import { orchestrateAirbusApis } from "./agentic-ai-mcp.js";
 import { getWeatherViaMcp } from "./weather-mcp.js";
 
 const runbookDirectory = join(process.cwd(), "data/runbooks");
@@ -241,7 +241,7 @@ export const sendMockOwnerNotification: Tool<Record<string, unknown>> = {
 };
 
 export const tools: Tool[] = [
-  orchestrateAgenticApi,
+  orchestrateAirbusApis,
   getWeatherViaMcp,
   searchKnowledge,
   searchLogs,

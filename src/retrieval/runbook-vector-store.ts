@@ -11,7 +11,7 @@ import { ChromaClient, type EmbeddingFunction, type Metadata } from "chromadb";
 
 const ollamaBaseUrl = "http://127.0.0.1:11434";
 const embeddingModel = process.env.OLLAMA_EMBEDDING_MODEL ?? "nomic-embed-text";
-const collectionName = "sentinel-runbooks";
+const collectionName = "airbus-intelligence-hub-runbooks";
 const runbookDirectory = join(process.cwd(), "data/runbooks");
 
 interface OllamaEmbedResponse {

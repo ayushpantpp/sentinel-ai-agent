@@ -147,6 +147,14 @@ function extractRecords(value: unknown): Record<string, unknown>[] {
   return [record, ...Object.values(record).flatMap((item) => extractRecords(item))];
 }
 
+export function requiresCombinedKnowledgeAndApi(question: string): boolean {
+  const requestsKnowledge = /\b(documented|runbook|procedure|policy|guidance|knowledge base)\b/i.test(question);
+  const requestsOperationalData = /\bAirbus APIs?\b/i.test(question)
+    || (/\b(find|show|identify|list|which|current|affected)\b/i.test(question)
+      && /\b(aircraft|fleet|deliver(?:y|ies)|maintenance|production|pilot|training|owners?)\b/i.test(question));
+  return requestsKnowledge && requestsOperationalData;
+}
+
 export function requiredEvidenceDecision(question: string, steps: AgentStep[]): ToolDecision | undefined {
   const usedTools = new Set(steps.map((step) => step.decision.toolName));
   const weatherRequest = /\b(weather|temperature|humidity|rain|wind)\b/i.test(question);
@@ -169,8 +177,25 @@ export function requiredEvidenceDecision(question: string, steps: AgentStep[]): 
       input: { query: question }
     };
   }
+  if (/\b(documented|runbook|procedure|next action)\b/i.test(question)
+    && !usedTools.has("searchRunbook")
+    && !usedTools.has("searchKnowledge")) {
+    const filename = /\b(deliver(?:y|ies)|delayed|forecast)\b/i.test(question)
+      ? "aircraft-delivery-escalation.md"
+      : /\bpilot|training|handover readiness\b/i.test(question)
+        ? "pilot-training-readiness.md"
+        : /\bnotif(?:y|ication)|customer-facing|airline update\b/i.test(question)
+          ? "aircraft-owner-notification.md"
+          : undefined;
+    return {
+      type: "tool",
+      rationale: "The goal requests documented guidance, so the knowledge base must be searched before operational APIs.",
+      toolName: "searchRunbook",
+      input: { query: question, ...(filename ? { filename } : {}) }
+    };
+  }
   if (/\b(aircraft|fleet|deliver(?:y|ies)|maintenance|production|manufacturing|pilot|training|owner notification)\b/i.test(question)
-    && !usedTools.has("orchestrateAgenticApi")) {
+    && !usedTools.has("orchestrateAirbusApis")) {
     const retrievedLogs = steps
       .filter((step) => step.decision.toolName === "searchLogs")
       .flatMap((step) => {
@@ -191,18 +216,25 @@ export function requiredEvidenceDecision(question: string, steps: AgentStep[]): 
         if (tailNumber) tailNumbers.add(tailNumber.toUpperCase());
       }
     }
+    const orchestrationQuestion = question
+      .replace(/\s+using\s+Airbus APIs?\b/ig, "")
+      .replace(/,?\s*(?:then|and then)\s+use\s+the\s+(?:documented|runbook|knowledge-base)\b.*$/i, "")
+      .trim();
     return {
       type: "tool",
-      rationale: "The goal requires Agentic AI orchestration data, which is available through its MCP server.",
-      toolName: "orchestrateAgenticApi",
-      input: { question, ...(tailNumbers.size ? { tailNumbers: [...tailNumbers] } : {}) }
+      rationale: "The goal requires Airbus APIs orchestration data, which is available through its MCP server.",
+      toolName: "orchestrateAirbusApis",
+      input: {
+        question: orchestrationQuestion || question,
+        ...(tailNumbers.size ? { tailNumbers: [...tailNumbers] } : {})
+      }
     };
   }
   const ownerNotificationDenied = /\b(do not|don't|never)\b.{0,50}\b(notify|send)\b.{0,50}\b(owners?|customers?|airlines?)\b/i.test(question);
   if (!ownerNotificationDenied
     && /\b(notify|send)\b.{0,60}\b(owners?|customers?|airlines?)\b|\b(owners?|customers?|airlines?)\b.{0,60}\bnotification\b/i.test(question)
     && !usedTools.has("sendMockOwnerNotification")) {
-    const latestMcpStep = [...steps].reverse().find((step) => step.decision.toolName === "orchestrateAgenticApi");
+    const latestMcpStep = [...steps].reverse().find((step) => step.decision.toolName === "orchestrateAirbusApis");
     const records = latestMcpStep && typeof latestMcpStep.observation === "object" && latestMcpStep.observation !== null
       ? extractRecords((latestMcpStep.observation as { data?: unknown }).data)
       : [];
@@ -269,16 +301,6 @@ export function requiredEvidenceDecision(question: string, steps: AgentStep[]): 
       }
     };
   }
-  if (/\b(documented|runbook|procedure|next action)\b/i.test(question)
-    && !usedTools.has("searchRunbook")
-    && !usedTools.has("searchKnowledge")) {
-    return {
-      type: "tool",
-      rationale: "The goal requests documented guidance, so a runbook must be retrieved before answering.",
-      toolName: "searchRunbook",
-      input: { query: question }
-    };
-  }
   return undefined;
 }
 
@@ -289,7 +311,7 @@ export async function decide(
   onResponse?: (response: LlmResponse) => void
 ): Promise<AgentDecision> {
   const value = await modelJson(
-    `You are the decision component of Sentinel AI's manual ReAct loop.
+    `You are the decision component of Airbus Intelligence Hub's manual ReAct loop.
 Return one JSON object only.
 To use a tool: {"type":"tool","rationale":"brief decision summary","toolName":"exact name","input":{...}}.
 To finish: {"type":"answer","rationale":"brief evidence summary","answer":"grounded response with evidence"}.
@@ -359,15 +381,24 @@ export async function reflect(
     previousSteps
   );
   if (combinedFleetReflection) return combinedFleetReflection;
+  const combinedKnowledgeReflection = reflectOnCombinedKnowledgeEvidence(
+    question,
+    decision,
+    observation,
+    previousSteps
+  );
+  if (combinedKnowledgeReflection) return combinedKnowledgeReflection;
+  const runbookReflection = reflectOnRunbookResult(decision, observation);
+  if (runbookReflection) return runbookReflection;
   const agenticMcpReflection = reflectOnAgenticMcpResult(decision, observation);
   const requiresCombinedEvidence = /\blogs?\b/i.test(question)
     && previousSteps.some((step) => step.decision.toolName === "searchLogs");
   const deterministic = reflectOnExplicitLogThreshold(question, observation);
   if (deterministic) return deterministic;
   const value = await modelJson(
-    `You are the reflection component of Sentinel AI. Evaluate whether all parts of the user goal can now be answered. If the goal requests a documented action and only logs were retrieved, sufficient must be false. Return JSON only. Do not add facts absent from the observations. The summary must be the final user-facing answer supported by the accumulated evidence, never a plan or a statement about what will be done.${
+    `You are the reflection component of Airbus Intelligence Hub. Evaluate whether all parts of the user goal can now be answered. If the goal requests a documented action and only logs were retrieved, sufficient must be false. Return JSON only. Do not add facts absent from the observations. The summary must be the final user-facing answer supported by the accumulated evidence, never a plan or a statement about what will be done.${
       agenticMcpReflection
-        ? " The latest observation is a successful response from the dedicated Agentic AI MCP orchestrator. Correlate it with previous local-log observations when present; do not speculate about missing external records."
+        ? " The latest observation is a successful response from the dedicated Airbus APIs MCP orchestrator. Correlate it with previous local-log observations when present; do not speculate about missing external records."
         : ""
     }`,
     JSON.stringify({ question, previousSteps, action: decision, observation }),
@@ -397,6 +428,73 @@ export async function reflect(
     sufficient: value.sufficient && canAnswerNow,
     summary: requiredText(value.summary, "summary"),
     nextStep
+  };
+}
+
+function reflectOnCombinedKnowledgeEvidence(
+  question: string,
+  decision: ToolDecision,
+  observation: unknown,
+  previousSteps: AgentStep[]
+): Reflection | undefined {
+  if (decision.toolName !== "orchestrateAirbusApis"
+    || typeof observation !== "object"
+    || observation === null) return undefined;
+  const result = observation as { success?: boolean; data?: unknown };
+  if (!result.success || typeof result.data !== "object" || result.data === null) return undefined;
+  const mcpData = result.data as { answer?: unknown; mergedResponse?: unknown };
+  const apiAnswer = mcpData.answer;
+  if (typeof apiAnswer !== "string" || !apiAnswer.trim()) return undefined;
+  const knowledgeStep = [...previousSteps].reverse().find((step) =>
+    new Set(["searchRunbook", "searchKnowledge"]).has(step.decision.toolName)
+  );
+  if (!knowledgeStep?.reflection.sufficient) return undefined;
+  let operationalSummary = apiAnswer.trim();
+  if (/\bdelayed\b/i.test(question)
+    && typeof mcpData.mergedResponse === "object"
+    && mcpData.mergedResponse !== null) {
+    const records = extractRecords(mcpData.mergedResponse);
+    const customers = new Map(records
+      .filter((record) => typeof record.id === "string" && typeof record.name === "string")
+      .map((record) => [record.id as string, record.name as string]));
+    const delayed = records.filter((record) => record.status === "delayed");
+    if (delayed.length) {
+      operationalSummary = delayed.map((record) => {
+        const planned = typeof record.plannedDeliveryDate === "string" ? record.plannedDeliveryDate : undefined;
+        const forecast = typeof record.forecastDeliveryDate === "string" ? record.forecastDeliveryDate : undefined;
+        const delayDays = planned && forecast
+          ? Math.round((Date.parse(forecast) - Date.parse(planned)) / 86_400_000)
+          : undefined;
+        const owner = typeof record.customerId === "string"
+          ? customers.get(record.customerId) ?? record.customerId
+          : "unknown owner";
+        return `${String(record.manufacturerSerialNumber ?? "Unknown MSN")} (${String(record.tailNumber ?? "tail pending")}), ${String(record.aircraftModel ?? "unknown model")}, owned by ${owner}, is delayed${delayDays === undefined ? "" : ` by ${delayDays} days`} at ${String(record.currentStation ?? "an unknown station")}. Reason: ${String(record.delayReason ?? "not provided")}.`;
+      }).join("\n");
+    }
+  }
+  return {
+    sufficient: true,
+    summary: `Operational data:\n\n${operationalSummary}\n\nDocumented guidance:\n\n${knowledgeStep.reflection.summary}`,
+    nextStep: "Answer with both the live Airbus API evidence and the retrieved approved guidance."
+  };
+}
+
+function reflectOnRunbookResult(
+  decision: ToolDecision,
+  observation: unknown
+): Reflection | undefined {
+  if (!new Set(["searchRunbook", "searchKnowledge"]).has(decision.toolName)
+    || typeof observation !== "object"
+    || observation === null) return undefined;
+  const result = observation as { success?: boolean; data?: unknown };
+  if (!result.success || !Array.isArray(result.data) || !result.data.length) return undefined;
+  const first = result.data[0] as { source?: unknown; content?: unknown };
+  if (typeof first.content !== "string" || !first.content.trim()) return undefined;
+  const guidance = first.content.trim().replace(/^#\s+[^\n]+\n+/i, "");
+  return {
+    sufficient: true,
+    summary: `According to ${String(first.source ?? "the approved knowledge base")}:\n\n${guidance}`,
+    nextStep: "Answer directly from the retrieved approved guidance."
   };
 }
 
@@ -456,7 +554,7 @@ function reflectOnCombinedFleetEvidence(
   observation: unknown,
   previousSteps: AgentStep[]
 ): Reflection | undefined {
-  if (decision.toolName !== "orchestrateAgenticApi"
+  if (decision.toolName !== "orchestrateAirbusApis"
     || typeof observation !== "object"
     || observation === null) return undefined;
   const result = observation as { success?: boolean; data?: unknown };
@@ -520,7 +618,7 @@ function reflectOnAgenticMcpResult(
   decision: ToolDecision,
   observation: unknown
 ): Reflection | undefined {
-  if (decision.toolName !== "orchestrateAgenticApi"
+  if (decision.toolName !== "orchestrateAirbusApis"
     || typeof observation !== "object"
     || observation === null) return undefined;
   const result = observation as { success?: boolean; data?: unknown };
@@ -530,7 +628,7 @@ function reflectOnAgenticMcpResult(
   return {
     sufficient: true,
     summary: answer.trim(),
-    nextStep: "Answer directly with the Agentic AI MCP result."
+    nextStep: "Answer directly with the Airbus APIs MCP result."
   };
 }
 
@@ -651,6 +749,15 @@ export async function runReactAgent(
       }
     });
     steps.push({ decision, observation, reflection });
+    if (reflection.sufficient
+      && new Set(["searchRunbook", "searchKnowledge"]).has(decision.toolName)) {
+      onEvent({
+        stage: "answer",
+        content: reflection.summary,
+        metadata: { iteration, durationMs: performance.now() - runStartedAt, source: "controller" }
+      });
+      return reflection.summary;
+    }
   }
 
   const fallback = `Stopped after ${iterationLimit} iterations without enough evidence. Review the observations or refine the question.`;

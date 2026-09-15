@@ -9,7 +9,7 @@ async function callOrchestrator(question: string, tailNumbers?: string[]): Promi
     version: "0.1.0"
   });
   const transport = new StreamableHTTPClientTransport(
-    new URL(process.env.AGENTIC_AI_MCP_URL ?? defaultMcpUrl)
+    new URL(process.env.AIRBUS_APIS_MCP_URL ?? process.env.AGENTIC_AI_MCP_URL ?? defaultMcpUrl)
   );
 
   try {
@@ -24,7 +24,7 @@ async function callOrchestrator(question: string, tailNumbers?: string[]): Promi
         .filter((item): item is { type: "text"; text: string } => item.type === "text")
         .map((item) => item.text)
         .join("\n");
-      throw new Error(message || "Agentic AI MCP tool returned an error.");
+      throw new Error(message || "Airbus APIs MCP tool returned an error.");
     }
 
     return result.structuredContent ?? result.content;
@@ -33,11 +33,11 @@ async function callOrchestrator(question: string, tailNumbers?: string[]): Promi
   }
 }
 
-export const orchestrateAgenticApi: Tool = {
+export const orchestrateAirbusApis: Tool = {
   definition: {
-    name: "orchestrateAgenticApi",
+    name: "orchestrateAirbusApis",
     description:
-      "Use Agentic AI through MCP to search customer, fleet, maintenance, production-order, delivery, aircraft-update, and pilot-training microservices.",
+      "Use Airbus APIs through MCP to search customer, fleet, maintenance, production-order, delivery, aircraft-update, and pilot-training microservices.",
     inputSchema: {
       type: "object",
       required: ["question"],

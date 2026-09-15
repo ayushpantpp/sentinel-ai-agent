@@ -13,16 +13,16 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sentinel AI · Decision Console",
+  title: "Airbus Intelligence Hub · Decision Console",
   description: "A visual operations console for tracing grounded AI decisions.",
   openGraph: {
-    title: "Sentinel AI · Decision Console",
+    title: "Airbus Intelligence Hub · Decision Console",
     description: "Trace every retrieval, guardrail, tool call, and grounded answer.",
-    images: ["/sentinel-social.png"],
+    images: ["/airbus-intelligence-hub-social.png"],
   },
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
   },
 };
 

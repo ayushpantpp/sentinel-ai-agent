@@ -1,8 +1,8 @@
-# Sentinel AI Architecture
+# Airbus Intelligence Hub Architecture
 
 ## Purpose
 
-Sentinel AI is a local operations agent. The React web application is the only
+Airbus Intelligence Hub is a local operations agent. The React web application is the only
 user interface. It communicates with a local Node API that executes the real
 guarded LangGraph workflow and streams every decision back to the browser.
 
@@ -13,7 +13,7 @@ React web console :3000
         │
         │ HTTP + Server-Sent Events
         ▼
-Sentinel Node API :8787
+Airbus Intelligence Hub Node API :8787
         │
         ├── Prompt guard
         ├── LangGraph workflow
@@ -29,7 +29,7 @@ Sentinel Node API :8787
 
 ## Source layout
 
-- `web/app/sentinel-console.tsx`: browser interface and SSE consumer.
+- `web/app/airbus-intelligence-hub-console.tsx`: browser interface and SSE consumer.
 - `web/app/globals.css`: console visual design.
 - `src/server.ts`: local REST and streaming API.
 - `src/langgraph/workflow.ts`: graph state, nodes, and routing.
@@ -85,12 +85,12 @@ Each model-dependent step also streams the exact local Ollama request payload:
 
 - Model name.
 - Temperature.
-- System message constructed by Sentinel.
+- System message constructed by Airbus Intelligence Hub.
 - User message containing the goal and current observations.
 - Current graph iteration.
 
 Selecting an **LLM call** step opens this payload in the right-side inspector.
-After Ollama returns, Sentinel emits a separate **LLM response** step containing
+After Ollama returns, Airbus Intelligence Hub emits a separate **LLM response** step containing
 both the raw model text and the parsed JSON object used by the workflow.
 
 ## Decision logic
@@ -205,7 +205,7 @@ Iteration 3
 
 Iteration 4
   → no required evidence tool remains
-  → Sentinel sends the goal and complete transcript to Ollama
+  → Airbus Intelligence Hub sends the goal and complete transcript to Ollama
   → Ollama returns an answer decision
   → LangGraph finishes and streams the grounded answer
 ```
@@ -225,7 +225,7 @@ runbook
   → paragraph-aware chunks
   → content hash
   → embed only new or changed chunks with nomic-embed-text
-  → store vectors in sentinel-runbooks ChromaDB collection
+  → store vectors in airbus-intelligence-hub-runbooks ChromaDB collection
 
 runbook question
   → Ollama query embedding
@@ -245,7 +245,7 @@ to keyword scoring instead of failing the whole agent request.
 ## LLM calls
 
 The API emits an explicit `llm-call` event before model-dependent graph work.
-The UI therefore shows when Sentinel is waiting for Ollama rather than making
+The UI therefore shows when Airbus Intelligence Hub is waiting for Ollama rather than making
 the delay look like tool or application work.
 
 Ollama is used for:
@@ -384,7 +384,7 @@ a production log analytics engine.
 
 For sustained GB-scale logs, use Loki, OpenSearch, Elasticsearch, or ClickHouse
 for timestamp indexes, service filters, retention, and fast aggregation. Keep
-Sentinel's log tool as an adapter to that system. Embeddings should be reserved
+Airbus Intelligence Hub's log tool as an adapter to that system. Embeddings should be reserved
 for selected incident windows, unusual events, or summaries rather than every
 raw log line.
 

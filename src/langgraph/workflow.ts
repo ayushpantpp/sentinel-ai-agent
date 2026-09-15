@@ -1,5 +1,5 @@
 /**
- * Purpose: Express Sentinel AI's manual ReAct loop as a LangGraph StateGraph.
+ * Purpose: Express Airbus Intelligence Hub's manual ReAct loop as a LangGraph StateGraph.
  * Architecture: Domain functions remain in the agent module; LangGraph owns
  * state transitions, named nodes, conditional routing, and loop termination.
  * AI concept: Graph orchestration makes stateful agent control flow explicit
@@ -12,6 +12,7 @@ import {
   decide,
   execute,
   reflect,
+  requiresCombinedKnowledgeAndApi,
   requiredEvidenceDecision,
   type AgentDecision,
   type AgentEvent,
@@ -33,7 +34,20 @@ const GraphState = Annotation.Root({
   answer: Annotation<string>
 });
 
-type SentinelGraphState = typeof GraphState.State;
+type AirbusIntelligenceHubGraphState = typeof GraphState.State;
+
+function parsedMcpModelResponse(value: unknown): Record<string, unknown> {
+  const raw = String(value ?? "").trim();
+  const normalized = raw.replace(/^```json\s*/i, "").replace(/\s*```$/, "");
+  try {
+    const parsed = JSON.parse(normalized) as unknown;
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : { value: parsed };
+  } catch {
+    return { answer: raw };
+  }
+}
 
 export interface GraphWorkflowOptions extends AgentOptions {
   onEvent: (event: AgentEvent) => void;
@@ -43,14 +57,14 @@ export interface GraphWorkflowOptions extends AgentOptions {
  * Builds a compiled graph. Closures inject guardrails and event recording while
  * graph state remains serializable workflow data.
  */
-export function createSentinelGraph(options: GraphWorkflowOptions) {
+export function createAirbusIntelligenceHubGraph(options: GraphWorkflowOptions) {
   const iterationLimit = Math.min(
     defaultMaximumIterations,
     Math.max(1, options.maximumIterations ?? defaultMaximumIterations)
   );
   const runStartedAt = performance.now();
 
-  const decideNode = async (state: SentinelGraphState) => {
+  const decideNode = async (state: AirbusIntelligenceHubGraphState) => {
     const iteration = state.iteration + 1;
     const requiredDecision = requiredEvidenceDecision(state.goal, state.steps);
     const startedAt = performance.now();
@@ -80,7 +94,7 @@ export function createSentinelGraph(options: GraphWorkflowOptions) {
     return { iteration, decision };
   };
 
-  const executeNode = async (state: SentinelGraphState) => {
+  const executeNode = async (state: AirbusIntelligenceHubGraphState) => {
     const decision = state.decision as ToolDecision;
     options.onEvent({
       stage: "action",
@@ -109,6 +123,39 @@ export function createSentinelGraph(options: GraphWorkflowOptions) {
     const observation = authorization.allowed
       ? await execute(decision.toolName, decision.input)
       : { success: false, error: `Guardrail denied tool execution: ${authorization.reason}` };
+    if (decision.toolName === "orchestrateAirbusApis"
+      && typeof observation === "object"
+      && observation !== null) {
+      const data = (observation as { data?: unknown }).data;
+      const interactions = typeof data === "object" && data !== null
+        ? (data as { llmInteractions?: unknown }).llmInteractions
+        : undefined;
+      if (Array.isArray(interactions)) {
+        for (const interaction of interactions) {
+          if (typeof interaction !== "object" || interaction === null) continue;
+          const item = interaction as Record<string, unknown>;
+          options.onEvent({
+            stage: "llm-call",
+            content: {
+              model: "Ollama via Airbus APIs MCP",
+              temperature: 0,
+              system: `Airbus APIs MCP · ${String(item.stage ?? "model call")}`,
+              user: String(item.prompt ?? "")
+            },
+            metadata: { iteration: state.iteration, source: "model" }
+          });
+          options.onEvent({
+            stage: "llm-response",
+            content: {
+              model: "Ollama via Airbus APIs MCP",
+              raw: String(item.response ?? ""),
+              parsed: parsedMcpModelResponse(item.response)
+            },
+            metadata: { iteration: state.iteration, source: "model" }
+          });
+        }
+      }
+    }
     options.onEvent({
       stage: "observation",
       content: observation,
@@ -121,7 +168,7 @@ export function createSentinelGraph(options: GraphWorkflowOptions) {
     return { observation };
   };
 
-  const reflectNode = async (state: SentinelGraphState) => {
+  const reflectNode = async (state: AirbusIntelligenceHubGraphState) => {
     const decision = state.decision as ToolDecision;
     const startedAt = performance.now();
     const reflection = await reflect(
@@ -155,7 +202,7 @@ export function createSentinelGraph(options: GraphWorkflowOptions) {
     };
   };
 
-  const finishNode = (state: SentinelGraphState) => {
+  const finishNode = (state: AirbusIntelligenceHubGraphState) => {
     const answer = state.decision?.type === "answer"
       ? state.decision.answer
       : state.reflection?.sufficient
@@ -173,9 +220,15 @@ export function createSentinelGraph(options: GraphWorkflowOptions) {
     return { answer };
   };
 
-  const routeDecision = (state: SentinelGraphState): "execute" | "finish" =>
+  const routeDecision = (state: AirbusIntelligenceHubGraphState): "execute" | "finish" =>
     state.decision?.type === "tool" ? "execute" : "finish";
-  const routeReflection = (state: SentinelGraphState): "decide" | "finish" => {
+  const routeReflection = (state: AirbusIntelligenceHubGraphState): "decide" | "finish" => {
+    if (state.reflection?.sufficient
+      && state.decision?.type === "tool"
+      && new Set(["searchRunbook", "searchKnowledge"]).has(state.decision.toolName)
+      && !requiresCombinedKnowledgeAndApi(state.goal)) {
+      return "finish";
+    }
     const requiredTool = requiredEvidenceDecision(state.goal, state.steps);
     if (requiredTool && state.iteration < iterationLimit) return "decide";
     return state.reflection?.sufficient || state.iteration >= iterationLimit ? "finish" : "decide";
@@ -201,9 +254,9 @@ export function createSentinelGraph(options: GraphWorkflowOptions) {
 }
 
 /** Invokes the compiled graph with explicit initial state. */
-export async function runSentinelGraph(goal: string, options: GraphWorkflowOptions): Promise<string> {
+export async function runAirbusIntelligenceHubGraph(goal: string, options: GraphWorkflowOptions): Promise<string> {
   options.onEvent({ stage: "prompt", content: goal, metadata: { source: "controller" } });
-  const graph = createSentinelGraph(options);
+  const graph = createAirbusIntelligenceHubGraph(options);
   const result = await graph.invoke({
     goal,
     iteration: 0,

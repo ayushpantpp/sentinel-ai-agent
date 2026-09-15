@@ -2,7 +2,7 @@
 
 ## Executive summary
 
-Sentinel AI is currently a modular TypeScript application with two local
+Airbus Intelligence Hub is currently a modular TypeScript application with two local
 inference/data sidecars:
 
 ```text

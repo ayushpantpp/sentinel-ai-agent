@@ -10,7 +10,7 @@ import type { OrchestratorService } from "../services/OrchestratorService.js";
  */
 export function createOrchestratorMcpHandler(service: OrchestratorService) {
   const server = new McpServer({
-    name: "agentic-ai-orchestrator",
+    name: "airbus-apis-orchestrator",
     version: "0.1.0"
   });
 

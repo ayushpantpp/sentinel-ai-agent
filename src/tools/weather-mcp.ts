@@ -15,7 +15,7 @@ export const getWeatherViaMcp: Tool = {
   },
   async execute(input) {
     const city = requireString(requireObject(input), "city");
-    const client = new Client({ name: "sentinel-ai", version: "0.1.0" });
+    const client = new Client({ name: "airbus-intelligence-hub", version: "0.1.0" });
     const transport = new StreamableHTTPClientTransport(new URL(weatherMcpUrl));
     try {
       await client.connect(transport);

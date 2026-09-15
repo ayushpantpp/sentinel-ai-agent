@@ -19,7 +19,7 @@ async function configuredServers(): Promise<McpServerConfig[]> {
 
 async function inspectServer(config: McpServerConfig) {
   const startedAt = performance.now();
-  const client = new Client({ name: "sentinel-connection-manager", version: "0.1.0" });
+  const client = new Client({ name: "airbus-intelligence-hub-connection-manager", version: "0.1.0" });
   const transport = new StreamableHTTPClientTransport(new URL(config.url));
   try {
     await Promise.race([

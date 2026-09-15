@@ -75,7 +75,7 @@ async function getWeather(city: string) {
 }
 
 function createWeatherMcpServer() {
-  const server = new McpServer({ name: "sentinel-weather", version: "0.1.0" });
+  const server = new McpServer({ name: "airbus-intelligence-hub-weather", version: "0.1.0" });
   server.registerTool(
     "getWeather",
     {
@@ -98,7 +98,7 @@ createServer(async (request, response) => {
   if (!validateHost(request, response)) return;
   if (request.method === "GET" && request.url === "/health") {
     response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({ ready: true, server: "sentinel-weather" }));
+    response.end(JSON.stringify({ ready: true, server: "airbus-intelligence-hub-weather" }));
     return;
   }
   if (request.url !== "/mcp") {

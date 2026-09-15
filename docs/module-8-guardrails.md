@@ -6,7 +6,7 @@ A prompt saying "do not do anything dangerous" is still interpreted by the
 same probabilistic model that proposes actions. Enterprise controls must exist
 in trusted application code outside the model.
 
-Sentinel AI now applies guardrails at three boundaries:
+Airbus Intelligence Hub now applies guardrails at three boundaries:
 
 ```text
 User goal -> prompt screening -> model decision -> tool authorization -> execution

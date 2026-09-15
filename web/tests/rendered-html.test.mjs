@@ -29,18 +29,19 @@ async function renderHtml() {
   return response.text();
 }
 
-test("server-renders the Sentinel operations console", async () => {
+test("server-renders the Airbus Intelligence Hub operations console", async () => {
   const html = await renderHtml();
 
-  assert.match(html, /<title>Sentinel AI · Decision Console<\/title>/i);
-  assert.match(html, />Sentinel<\/strong>/);
+  assert.match(html, /<title>Airbus Intelligence Hub · Decision Console<\/title>/i);
+  assert.match(html, />Airbus Intelligence Hub<\/strong>/);
   assert.match(html, />Manufacturing intelligence<\/span>/);
+  assert.match(html, /src="\/sopra-steria-logo\.svg"/);
   assert.match(html, /aria-label="Main navigation"/);
   assert.match(html, />Decision trace<\/span>/);
   assert.match(html, />Knowledge base<\/span>/);
   assert.match(html, />MCP connections<\/span>/);
-  assert.match(html, />Ask Sentinel<\/span>/);
-  assert.match(html, /aria-label="Question for Sentinel"/);
+  assert.match(html, />Ask Airbus Intelligence Hub<\/span>/);
+  assert.match(html, /aria-label="Question for Airbus Intelligence Hub"/);
   assert.match(html, />Run agent<\/button>/);
   assert.doesNotMatch(html, /Upload log file|>Local logs<|>Logs<\/button>/i);
 });
@@ -49,10 +50,12 @@ test("server-renders MCP health and trace inspection UI", async () => {
   const html = await renderHtml();
 
   assert.match(html, />Ollama<\/span>/);
-  assert.match(html, />ChromaDB<\/span>/);
-  assert.match(html, />Agentic AI · MCP<\/span>/);
-  assert.match(html, />Start Agentic AI on port 3001<\/small>/);
-  assert.match(html, />Local service unavailable<\/div>/);
+  assert.match(html, />Semantic search<\/span>/);
+  assert.match(html, />Optional index offline<\/strong>/);
+  assert.match(html, />Keyword search remains active<\/small>/);
+  assert.match(html, />Airbus APIs · MCP<\/span>/);
+  assert.match(html, />Start Airbus APIs on port 3001<\/small>/);
+  assert.match(html, />Core service unavailable<\/div>/);
   assert.match(html, />Live execution<\/span>/);
   assert.match(html, />Decision flow<\/h2>/);
   assert.match(html, /Run the agent to create a live trace\./);

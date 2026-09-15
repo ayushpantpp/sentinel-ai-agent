@@ -1,5 +1,5 @@
 /**
- * Purpose: Expose Sentinel AI's real local workflow to the web console.
+ * Purpose: Expose Airbus Intelligence Hub's real local workflow to the web console.
  * Architecture: A small Node HTTP server streams LangGraph events over SSE and
  * keeps operational resources in the same files used by the agent tools.
  * AI concept: The UI observes the orchestration layer instead of duplicating or
@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { assessPrompt } from "./guardrails/prompt-guard.js";
 import { ToolPolicy, type AgentRole } from "./guardrails/tool-policy.js";
-import { runSentinelGraph } from "./langgraph/workflow.js";
+import { runAirbusIntelligenceHubGraph } from "./langgraph/workflow.js";
 import type { AgentEvent, ToolAuthorizationRequest } from "./agent/react-agent.js";
 import { inspectMcpConnections } from "./mcp/connection-manager.js";
 import {
@@ -21,7 +21,7 @@ import {
   syncRunbookIndex
 } from "./retrieval/runbook-vector-store.js";
 
-const port = Number(process.env.SENTINEL_API_PORT ?? 8787);
+const port = Number(process.env.AIRBUS_INTELLIGENCE_HUB_API_PORT ?? 8787);
 const runbookDirectory = join(process.cwd(), "data/runbooks");
 const logFile = join(process.cwd(), "data/logs/operations.log");
 const pendingApprovals = new Map<string, (approved: boolean) => void>();
@@ -69,18 +69,18 @@ async function health() {
       return { ready: false, latencyMs: Math.round(performance.now() - startedAt) };
     }
   };
-  const [ollama, chroma, agenticAiMcp, runbookIndex] = await Promise.all([
+  const [ollama, chroma, airbusApisMcp, runbookIndex] = await Promise.all([
     check("http://127.0.0.1:11434/api/tags"),
     check("http://127.0.0.1:8000/api/v2/heartbeat"),
     check(
       new URL(
         "/health",
-        process.env.AGENTIC_AI_MCP_URL ?? "http://127.0.0.1:3001/mcp"
+        process.env.AIRBUS_APIS_MCP_URL ?? process.env.AGENTIC_AI_MCP_URL ?? "http://127.0.0.1:3001/mcp"
       ).toString()
     ),
     runbookIndexHealth()
   ]);
-  return { api: { ready: true }, ollama, chroma, agenticAiMcp, runbookIndex };
+  return { api: { ready: true }, ollama, chroma, airbusApisMcp, runbookIndex };
 }
 
 async function listResources() {
@@ -213,7 +213,7 @@ async function runAgent(requestBody: Record<string, unknown>, response: ServerRe
   });
 
   try {
-    const answer = await runSentinelGraph(goal, {
+    const answer = await runAirbusIntelligenceHubGraph(goal, {
       maximumIterations: 5,
       authorizeTool: (authorizationRequest) => policy.authorize(authorizationRequest),
       onEvent: (event: AgentEvent) => sendEvent(response, "agent-event", event)
@@ -281,5 +281,5 @@ createServer(async (request, response) => {
     json(response, 400, { error: error instanceof Error ? error.message : "Unknown request error." });
   }
 }).listen(port, "127.0.0.1", () => {
-  console.log(`Sentinel API listening on http://127.0.0.1:${port}`);
+  console.log(`Airbus Intelligence Hub API listening on http://127.0.0.1:${port}`);
 });

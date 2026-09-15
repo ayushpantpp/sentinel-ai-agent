@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Activity,
   AlertTriangle,
   BookOpen,
   Bot,
@@ -55,7 +54,7 @@ type Health = {
   api: { ready: boolean };
   ollama: { ready: boolean; latencyMs: number };
   chroma: { ready: boolean; latencyMs: number };
-  agenticAiMcp: { ready: boolean; latencyMs: number };
+  airbusApisMcp: { ready: boolean; latencyMs: number };
   runbookIndex: { ready: boolean; totalChunks?: number; newlyEmbedded?: number; error?: string };
 };
 
@@ -108,7 +107,7 @@ function eventStep(event: AgentEvent, index: number): TraceStep {
   const action = event.stage === "action" && typeof event.content === "object" && event.content !== null
     ? event.content as { tool?: string; input?: Record<string, unknown> }
     : undefined;
-  const isAgenticMcpCall = action?.tool === "orchestrateAgenticApi";
+  const isAirbusApisMcpCall = action?.tool === "orchestrateAirbusApis";
   const isWeatherMcpCall = action?.tool === "getWeatherViaMcp";
   const labels: Record<string, string> = {
     "prompt-guard": "Prompt guard",
@@ -140,9 +139,9 @@ function eventStep(event: AgentEvent, index: number): TraceStep {
   const llmResponse = event.stage === "llm-response" && typeof event.content === "object" && event.content !== null
     ? event.content as TraceStep["llmResponse"]
     : undefined;
-  const detail = isAgenticMcpCall
-    ? `Calling the Agentic AI "orchestrate" tool over MCP at ${
-      process.env.NEXT_PUBLIC_AGENTIC_AI_MCP_URL ?? "http://127.0.0.1:3001/mcp"
+  const detail = isAirbusApisMcpCall
+    ? `Calling the Airbus APIs "orchestrate" tool over MCP at ${
+      process.env.NEXT_PUBLIC_AIRBUS_APIS_MCP_URL ?? process.env.NEXT_PUBLIC_AGENTIC_AI_MCP_URL ?? "http://127.0.0.1:3001/mcp"
     } with question: ${String(action?.input?.question ?? "")}`
     : isWeatherMcpCall
       ? `Calling the Weather "getWeather" tool over MCP at http://127.0.0.1:3002/mcp for ${String(action?.input?.city ?? "the requested city")}.`
@@ -162,7 +161,7 @@ function eventStep(event: AgentEvent, index: number): TraceStep {
     : undefined;
   return {
     id: String(index + 1).padStart(2, "0"),
-    label: isAgenticMcpCall ? "MCP call · Agentic AI" : isWeatherMcpCall ? "MCP call · Weather" : labels[event.stage] ?? event.stage,
+    label: isAirbusApisMcpCall ? "MCP call · Airbus APIs" : isWeatherMcpCall ? "MCP call · Weather" : labels[event.stage] ?? event.stage,
     detail,
     status: "active",
     meta: [
@@ -176,7 +175,7 @@ function eventStep(event: AgentEvent, index: number): TraceStep {
   };
 }
 
-export function SentinelConsole() {
+export function AirbusIntelligenceHubConsole() {
   const [activeView, setActiveView] = useState<"trace" | "resources" | "connections">("trace");
   const [resources, setResources] = useState<Resource[]>([]);
   const [showAdd, setShowAdd] = useState(false);
@@ -360,14 +359,19 @@ export function SentinelConsole() {
 
   const selected = traceSteps.find((step) => step.id === selectedStep) ?? traceSteps[0];
   const answerStep = [...traceSteps].reverse().find((step) => step.label === "Grounded answer");
-  const allReady = Boolean(health?.api.ready && health.ollama.ready && health.chroma.ready);
+  const coreReady = Boolean(health?.api.ready && health.ollama.ready && health.airbusApisMcp?.ready);
+  const semanticIndexReady = Boolean(health?.chroma.ready && health.runbookIndex?.ready);
 
   return (
     <main className="console-shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark"><Activity size={19} /></div>
-          <div><strong>Sentinel</strong><span>Manufacturing intelligence</span></div>
+          {/* Local copies of the official brand assets avoid runtime image optimization dependencies. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="brand-logo" src="/sopra-steria-logo.svg" width={166} height={22} alt="Sopra Steria" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="brand-favicon" src="/favicon.ico" width={35} height={35} alt="" aria-hidden="true" />
+          <div><strong>Airbus Intelligence Hub</strong><span>Manufacturing intelligence</span></div>
         </div>
 
         <nav className="primary-nav" aria-label="Main navigation">
@@ -390,14 +394,14 @@ export function SentinelConsole() {
             <small>{health?.ollama.ready ? `Local · ${health.ollama.latencyMs} ms` : "Start Ollama locally"}</small>
           </div>
           <div className="engine-card">
-            <div className="engine-row"><Database size={15} /><span>ChromaDB</span><i className={`status-dot ${health?.chroma.ready ? "" : "offline"}`} /></div>
-            <strong>{health?.runbookIndex?.ready ? `${health.runbookIndex.totalChunks ?? 0} indexed chunks` : "Index unavailable"}</strong>
-            <small>{health?.runbookIndex?.ready ? "semantic runbooks" : "keyword fallback active"}</small>
+            <div className="engine-row"><Database size={15} /><span>Semantic search</span><i className={`status-dot ${semanticIndexReady ? "" : "degraded"}`} /></div>
+            <strong>{semanticIndexReady ? `${health?.runbookIndex.totalChunks ?? 0} indexed chunks` : "Optional index offline"}</strong>
+            <small>{semanticIndexReady ? "ChromaDB semantic retrieval" : "Keyword search remains active"}</small>
           </div>
           <div className="engine-card">
-            <div className="engine-row"><Server size={15} /><span>Agentic AI · MCP</span><i className={`status-dot ${health?.agenticAiMcp?.ready ? "" : "offline"}`} /></div>
-            <strong>{health?.agenticAiMcp?.ready ? "Connected" : "Unavailable"}</strong>
-            <small>{health?.agenticAiMcp?.ready ? `Streamable HTTP · ${health.agenticAiMcp.latencyMs} ms` : "Start Agentic AI on port 3001"}</small>
+            <div className="engine-row"><Server size={15} /><span>Airbus APIs · MCP</span><i className={`status-dot ${health?.airbusApisMcp?.ready ? "" : "offline"}`} /></div>
+            <strong>{health?.airbusApisMcp?.ready ? "Connected" : "Unavailable"}</strong>
+            <small>{health?.airbusApisMcp?.ready ? `Streamable HTTP · ${health?.airbusApisMcp?.latencyMs} ms` : "Start Airbus APIs on port 3001"}</small>
           </div>
         </div>
 
@@ -411,18 +415,18 @@ export function SentinelConsole() {
       <section className="workspace">
         <header className="topbar">
           <div>
-            <div className="breadcrumb"><span>Sentinel AI</span><ChevronRight size={13} /><strong>{activeView === "trace" ? "Decision trace" : activeView === "resources" ? "Knowledge base" : "MCP connections"}</strong></div>
+            <div className="breadcrumb"><span>Airbus Intelligence Hub</span><ChevronRight size={13} /><strong>{activeView === "trace" ? "Decision trace" : activeView === "resources" ? "Knowledge base" : "MCP connections"}</strong></div>
             <p>{activeView === "trace" ? "Inspect how the agent reached its answer." : activeView === "resources" ? "Manage the evidence available to your local agent." : "Inspect configured servers and their discovered tools."}</p>
           </div>
-          <div className={`health-pill ${allReady ? "" : "offline"}`}><span className={`pulse ${allReady ? "" : "offline"}`} />{allReady ? "All systems local" : "Local service unavailable"}</div>
+          <div className={`health-pill ${coreReady ? semanticIndexReady ? "" : "degraded" : "offline"}`}><span className={`pulse ${coreReady ? semanticIndexReady ? "" : "degraded" : "offline"}`} />{coreReady ? semanticIndexReady ? "All systems ready" : "Core services connected" : "Core service unavailable"}</div>
         </header>
 
         {activeView === "trace" ? (
-          <div className="trace-layout">
+          <div className={`trace-layout ${selected ? "" : "without-inspector"}`}>
             <section className="main-stage">
               <div className="prompt-card">
-                <div className="prompt-header"><Bot size={18} /><span>Ask Sentinel</span><label className="role-control">Role<select aria-label="Agent role" value={role} onChange={(event) => setRole(event.target.value as "operator" | "viewer")}><option value="operator">Operator</option><option value="viewer">Viewer</option></select></label></div>
-                <textarea value={query} onChange={(event) => setQuery(event.target.value)} aria-label="Question for Sentinel" />
+                <div className="prompt-header"><Bot size={18} /><span>Ask Airbus Intelligence Hub</span><label className="role-control">Role<select aria-label="Agent role" value={role} onChange={(event) => setRole(event.target.value as "operator" | "viewer")}><option value="operator">Operator</option><option value="viewer">Viewer</option></select></label></div>
+                <textarea value={query} onChange={(event) => setQuery(event.target.value)} aria-label="Question for Airbus Intelligence Hub" />
                 <div className="example-questions" aria-label="Example manufacturing questions">
                   {manufacturingExamples.map((example) => <button type="button" key={example} onClick={() => setQuery(example)}>{example}</button>)}
                 </div>
@@ -491,7 +495,7 @@ export function SentinelConsole() {
         ) : activeView === "resources" ? (
           <section className="resources-view">
             <div className="resources-hero">
-              <div><span className="eyebrow">Operational guidance</span><h1>Knowledge base</h1><p>Manage approved runbooks and manufacturing guidance available to Sentinel.</p></div>
+              <div><span className="eyebrow">Operational guidance</span><h1>Knowledge base</h1><p>Manage approved runbooks and manufacturing guidance available to Airbus Intelligence Hub.</p></div>
               <div className="hero-actions">
                 <button className="primary-button" onClick={() => setShowAdd(true)}><Plus size={16} />Add guidance</button>
               </div>
