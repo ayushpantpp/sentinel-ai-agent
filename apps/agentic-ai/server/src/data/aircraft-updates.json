@@ -1,0 +1,6 @@
+[
+  {"id":"upd-4001","orderId":"ord-1001","customerId":"c_lh","tailNumber":"D-AIXD","type":"delivery_ready","message":"Aircraft passed customer acceptance flight and is ready for handover.","occurredAt":"2026-09-15T08:10:00Z","notificationStatus":"pending"},
+  {"id":"upd-4002","orderId":"ord-1003","customerId":"c_klm","tailNumber":"PH-NXB","type":"delivery_delay","message":"Forecast delivery moved to 14 October because cabin seat integration is delayed.","occurredAt":"2026-09-15T09:30:00Z","notificationStatus":"pending"},
+  {"id":"upd-4003","orderId":"ord-1005","customerId":"c_ua","tailNumber":"N74901","type":"milestone_complete","message":"Fuselage join completed and the aircraft moved to systems installation.","occurredAt":"2026-09-14T16:45:00Z","notificationStatus":"sent"},
+  {"id":"upd-4004","orderId":"ord-1006","customerId":"c_klm","tailNumber":"PH-AKA","type":"delivery_ready","message":"Technical acceptance is complete; commercial documents remain for signature.","occurredAt":"2026-09-15T11:20:00Z","notificationStatus":"pending"}
+]

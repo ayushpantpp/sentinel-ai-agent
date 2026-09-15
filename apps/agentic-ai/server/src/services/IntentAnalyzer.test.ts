@@ -14,4 +14,13 @@ describe("IntentAnalyzer", () => {
       candidateApis: ["customer-search", "fleet-by-customer"]
     });
   });
+
+  it("removes placeholder entities produced by a small local model", () => {
+    const analyzer = new IntentAnalyzer();
+    expect(analyzer.parse(JSON.stringify({
+      intent: "aircraft-updates",
+      entities: { customer: "optional company" },
+      candidateApis: ["aircraft-updates-pending"]
+    })).entities).toEqual({});
+  });
 });

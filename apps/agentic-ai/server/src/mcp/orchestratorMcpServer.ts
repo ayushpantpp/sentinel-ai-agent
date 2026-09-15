@@ -19,7 +19,7 @@ export function createOrchestratorMcpHandler(service: OrchestratorService) {
     {
       title: "Orchestrate an operations question",
       description:
-        "Run Agentic AI's existing orchestration API for fleet, customer, delivery, or maintenance questions.",
+        "Search aircraft manufacturing operations across customer, fleet, maintenance, production-order, delivery, aircraft-update, and pilot-training services.",
       inputSchema: z.object({
         question: z.string().trim().min(3).max(1000).optional(),
         tailNumbers: z.array(z.string().trim().min(3).max(20)).min(1).max(50).optional()

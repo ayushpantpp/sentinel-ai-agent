@@ -25,7 +25,6 @@ import {
   ShieldCheck,
   Sparkles,
   TerminalSquare,
-  Upload,
   X,
   Zap,
 } from "lucide-react";
@@ -66,6 +65,16 @@ type AgentEvent = {
   metadata?: { durationMs?: number; source?: string; iteration?: number };
 };
 
+type ApprovalRequest = {
+  approvalId: string;
+  request: {
+    iteration: number;
+    toolName: string;
+    input: Record<string, unknown>;
+    rationale: string;
+  };
+};
+
 type McpConnection = {
   id: string;
   name: string;
@@ -79,6 +88,11 @@ type McpConnection = {
 };
 
 const apiBaseUrl = "http://127.0.0.1:8787";
+const manufacturingExamples = [
+  "Show aircraft production orders grouped by not started, in production, ready for delivery, and delayed.",
+  "Which airline pilots have aircraft training overdue or due soon, and for which aircraft family?",
+  "Find pending aircraft updates, identify each owner, and notify the affected airlines."
+];
 
 const iconMap = {
   prompt: Bot,
@@ -165,21 +179,21 @@ function eventStep(event: AgentEvent, index: number): TraceStep {
 export function SentinelConsole() {
   const [activeView, setActiveView] = useState<"trace" | "resources" | "connections">("trace");
   const [resources, setResources] = useState<Resource[]>([]);
-  const [resourceFilter, setResourceFilter] = useState<"all" | "log" | "knowledge">("all");
   const [showAdd, setShowAdd] = useState(false);
   const [query, setQuery] = useState(
-    "Using local logs only, did the payment API p95 latency exceed 2 seconds?",
+    "Show aircraft production orders grouped by not started, in production, ready for delivery, and delayed.",
   );
   const [isRunning, setIsRunning] = useState(false);
   const [traceSteps, setTraceSteps] = useState<TraceStep[]>([]);
   const [selectedStep, setSelectedStep] = useState("");
   const [health, setHealth] = useState<Health | null>(null);
   const [runError, setRunError] = useState("");
-  const [isUploadingLogs, setIsUploadingLogs] = useState(false);
   const [role, setRole] = useState<"operator" | "viewer">("operator");
   const [editingResource, setEditingResource] = useState<Resource | null>(null);
   const [mcpConnections, setMcpConnections] = useState<McpConnection[]>([]);
   const [isRefreshingConnections, setIsRefreshingConnections] = useState(false);
+  const [approvalRequest, setApprovalRequest] = useState<ApprovalRequest | null>(null);
+  const [isResolvingApproval, setIsResolvingApproval] = useState(false);
 
   useEffect(() => {
     fetch(`${apiBaseUrl}/api/resources`)
@@ -212,36 +226,9 @@ export function SentinelConsole() {
   }, []);
 
   const filteredResources = useMemo(
-    () =>
-      resourceFilter === "all"
-        ? resources
-        : resources.filter((resource) => resource.kind === resourceFilter),
-    [resourceFilter, resources],
+    () => resources.filter((resource) => resource.kind === "knowledge"),
+    [resources],
   );
-
-  async function refreshResources() {
-    const response = await fetch(`${apiBaseUrl}/api/resources`);
-    if (!response.ok) throw new Error("Unable to refresh resources.");
-    setResources(await response.json() as Resource[]);
-  }
-
-  async function uploadLogFile(file: File) {
-    setIsUploadingLogs(true);
-    setRunError("");
-    try {
-      const response = await fetch(`${apiBaseUrl}/api/log-files`, {
-        method: "POST",
-        headers: { "content-type": "text/plain", "x-file-name": file.name },
-        body: file,
-      });
-      if (!response.ok) throw new Error(`Log upload failed with ${response.status}.`);
-      await refreshResources();
-    } catch (error) {
-      setRunError(error instanceof Error ? error.message : "Log upload failed.");
-    } finally {
-      setIsUploadingLogs(false);
-    }
-  }
 
   async function runAgent() {
     if (!query.trim()) return;
@@ -249,6 +236,7 @@ export function SentinelConsole() {
     setRunError("");
     setTraceSteps([]);
     setSelectedStep("");
+    setApprovalRequest(null);
     try {
       const response = await fetch(`${apiBaseUrl}/api/agent`, {
         method: "POST",
@@ -281,6 +269,8 @@ export function SentinelConsole() {
               setSelectedStep(next[next.length - 1].id);
               return next;
             });
+          } else if (eventName === "approval-required") {
+            setApprovalRequest(parsed as unknown as ApprovalRequest);
           } else if (eventName === "error") {
             setRunError((parsed as { message?: string }).message ?? "Agent execution failed.");
           } else if (eventName === "complete") {
@@ -296,10 +286,28 @@ export function SentinelConsole() {
     }
   }
 
+  async function resolveApproval(approved: boolean) {
+    if (!approvalRequest) return;
+    setIsResolvingApproval(true);
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/approvals/${approvalRequest.approvalId}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ approved }),
+      });
+      if (!response.ok) throw new Error("Approval request expired.");
+      setApprovalRequest(null);
+    } catch (error) {
+      setRunError(error instanceof Error ? error.message : "Unable to resolve approval.");
+    } finally {
+      setIsResolvingApproval(false);
+    }
+  }
+
   async function addResource(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const kind = form.get("kind") as "log" | "knowledge";
+    const kind = "knowledge" as const;
     const content = String(form.get("content") ?? "").trim();
     const title = String(form.get("title") ?? "").trim();
     if (!title || !content) return;
@@ -327,7 +335,7 @@ export function SentinelConsole() {
       title,
       content,
       kind,
-      source: kind === "log" ? "manual-entry.log" : "manual-runbook.md",
+      source: "manual-runbook.md",
       createdAt: "just now",
     };
     setResources((current) => [optimistic, ...current]);
@@ -352,8 +360,6 @@ export function SentinelConsole() {
 
   const selected = traceSteps.find((step) => step.id === selectedStep) ?? traceSteps[0];
   const answerStep = [...traceSteps].reverse().find((step) => step.label === "Grounded answer");
-  const relevantLogs = traceSteps.flatMap((step) => step.evidence ?? [])
-    .filter((line) => /\b(?:WARN|ERROR|INFO|DEBUG)\b|service=/i.test(line));
   const allReady = Boolean(health?.api.ready && health.ollama.ready && health.chroma.ready);
 
   return (
@@ -361,7 +367,7 @@ export function SentinelConsole() {
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark"><Activity size={19} /></div>
-          <div><strong>Sentinel</strong><span>AI operations</span></div>
+          <div><strong>Sentinel</strong><span>Manufacturing intelligence</span></div>
         </div>
 
         <nav className="primary-nav" aria-label="Main navigation">
@@ -369,7 +375,7 @@ export function SentinelConsole() {
             <GitBranch size={17} /><span>Decision trace</span><kbd>⌘1</kbd>
           </button>
           <button className={activeView === "resources" ? "active" : ""} onClick={() => setActiveView("resources")}>
-            <Library size={17} /><span>Knowledge & logs</span><kbd>⌘2</kbd>
+            <Library size={17} /><span>Knowledge base</span><kbd>⌘2</kbd>
           </button>
           <button className={activeView === "connections" ? "active" : ""} onClick={() => { setActiveView("connections"); if (!mcpConnections.length) void refreshMcpConnections(); }}>
             <Plug size={17} /><span>MCP connections</span><kbd>⌘3</kbd>
@@ -405,7 +411,7 @@ export function SentinelConsole() {
       <section className="workspace">
         <header className="topbar">
           <div>
-            <div className="breadcrumb"><span>Sentinel AI</span><ChevronRight size={13} /><strong>{activeView === "trace" ? "Decision trace" : activeView === "resources" ? "Knowledge & logs" : "MCP connections"}</strong></div>
+            <div className="breadcrumb"><span>Sentinel AI</span><ChevronRight size={13} /><strong>{activeView === "trace" ? "Decision trace" : activeView === "resources" ? "Knowledge base" : "MCP connections"}</strong></div>
             <p>{activeView === "trace" ? "Inspect how the agent reached its answer." : activeView === "resources" ? "Manage the evidence available to your local agent." : "Inspect configured servers and their discovered tools."}</p>
           </div>
           <div className={`health-pill ${allReady ? "" : "offline"}`}><span className={`pulse ${allReady ? "" : "offline"}`} />{allReady ? "All systems local" : "Local service unavailable"}</div>
@@ -417,8 +423,11 @@ export function SentinelConsole() {
               <div className="prompt-card">
                 <div className="prompt-header"><Bot size={18} /><span>Ask Sentinel</span><label className="role-control">Role<select aria-label="Agent role" value={role} onChange={(event) => setRole(event.target.value as "operator" | "viewer")}><option value="operator">Operator</option><option value="viewer">Viewer</option></select></label></div>
                 <textarea value={query} onChange={(event) => setQuery(event.target.value)} aria-label="Question for Sentinel" />
+                <div className="example-questions" aria-label="Example manufacturing questions">
+                  {manufacturingExamples.map((example) => <button type="button" key={example} onClick={() => setQuery(example)}>{example}</button>)}
+                </div>
                 <div className="prompt-actions">
-                  <div><span className="source-chip"><Database size={13} />Runbooks</span><span className="source-chip"><TerminalSquare size={13} />Local logs</span></div>
+                  <div><span className="source-chip"><Plug size={13} />Connected services</span><span className="source-chip"><Database size={13} />Knowledge base</span></div>
                   <button onClick={runAgent} disabled={isRunning}>{isRunning ? <><CircleDot className="spin" size={15} />Tracing</> : <><Send size={15} />Run agent</>}</button>
                 </div>
                 {runError && <div className="run-error"><AlertTriangle size={14} />{runError}</div>}
@@ -473,12 +482,6 @@ export function SentinelConsole() {
                 <pre>{JSON.stringify(selected.llmResponse.parsed, null, 2)}</pre>
               </div>}
               <div className="inspector-block">
-                <span className="block-label">Evidence used</span>
-                {relevantLogs.length ? relevantLogs.map((line, index) => (
-                  <div className="evidence log-evidence" key={`${line}-${index}`}><TerminalSquare size={15} /><span><strong>operations.log</strong><small>{line}</small></span></div>
-                )) : <div className="no-evidence">No relevant log evidence retrieved yet.</div>}
-              </div>
-              <div className="inspector-block">
                 <span className="block-label">Safety</span>
                 <div className="safety-row"><ShieldCheck size={16} /><span><strong>Read-only action</strong><small>No approval required</small></span></div>
                 <div className="safety-row"><Shield size={16} /><span><strong>Prompt passed</strong><small>No injection detected</small></span></div>
@@ -488,31 +491,28 @@ export function SentinelConsole() {
         ) : activeView === "resources" ? (
           <section className="resources-view">
             <div className="resources-hero">
-              <div><span className="eyebrow">Agent memory</span><h1>Knowledge & logs</h1><p>Control the evidence Sentinel can retrieve. New entries become available to future traces.</p></div>
+              <div><span className="eyebrow">Operational guidance</span><h1>Knowledge base</h1><p>Manage approved runbooks and manufacturing guidance available to Sentinel.</p></div>
               <div className="hero-actions">
-                <label className={`upload-button ${isUploadingLogs ? "disabled" : ""}`}><Upload size={16} />{isUploadingLogs ? "Uploading…" : "Upload log file"}<input type="file" accept=".log,.txt,.jsonl,text/plain,application/x-ndjson" disabled={isUploadingLogs} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadLogFile(file); event.target.value = ""; }} /></label>
-                <button className="primary-button" onClick={() => setShowAdd(true)}><Plus size={16} />Add source</button>
+                <button className="primary-button" onClick={() => setShowAdd(true)}><Plus size={16} />Add guidance</button>
               </div>
             </div>
             <div className="resource-stats">
               <div><BookOpen size={18} /><span><strong>{resources.filter((r) => r.kind === "knowledge").length}</strong>runbook documents</span></div>
-              <div><TerminalSquare size={18} /><span><strong>{resources.filter((r) => r.kind === "log").length}</strong>log events</span></div>
+              <div><Plug size={18} /><span><strong>2</strong>MCP connections</span></div>
               <div><Zap size={18} /><span><strong>0.84</strong>best retrieval score</span></div>
             </div>
             <div className="resource-toolbar">
-              <div className="filters">
-                {(["all", "knowledge", "log"] as const).map((filter) => <button key={filter} className={resourceFilter === filter ? "active" : ""} onClick={() => setResourceFilter(filter)}>{filter === "all" ? "All sources" : filter === "knowledge" ? "Runbooks" : "Logs"}</button>)}
-              </div>
+              <div className="filters"><button className="active">Approved guidance</button></div>
               <div className="search-box"><Search size={15} /><input placeholder="Search sources…" /></div>
             </div>
             <div className="resource-list">
               {filteredResources.map((resource) => (
                 <article key={resource.id} className="resource-card">
-                  <div className={`resource-icon ${resource.kind}`} >{resource.kind === "log" ? <TerminalSquare size={18} /> : <FileText size={18} />}</div>
+                  <div className="resource-icon knowledge"><FileText size={18} /></div>
                   <div className="resource-copy"><div><strong>{resource.title}</strong><span>{resource.source} · {resource.createdAt}</span></div><p>{resource.content}</p></div>
                   <div className="resource-actions">
-                    {resource.kind === "knowledge" && <button aria-label={`Edit ${resource.title}`} onClick={() => { setEditingResource(resource); setShowAdd(true); }}><Pencil size={14} /></button>}
-                    <span className={`kind-badge ${resource.kind}`}>{resource.kind === "log" ? "LOG" : "KB"}</span>
+                    <button aria-label={`Edit ${resource.title}`} onClick={() => { setEditingResource(resource); setShowAdd(true); }}><Pencil size={14} /></button>
+                    <span className="kind-badge knowledge">KB</span>
                   </div>
                 </article>
               ))}
@@ -555,13 +555,25 @@ export function SentinelConsole() {
       {showAdd && (
         <div className="modal-backdrop" role="presentation">
           <form className="modal" onSubmit={addResource} key={editingResource?.id ?? "new-resource"}>
-            <div className="modal-header"><div><span className="eyebrow">{editingResource ? "Update knowledge" : "New evidence"}</span><h2>{editingResource ? "Edit runbook" : "Add a source"}</h2></div><button type="button" aria-label="Close" onClick={() => { setShowAdd(false); setEditingResource(null); }}><X size={18} /></button></div>
-            <label>Source type<select name="kind" defaultValue={editingResource?.kind ?? "knowledge"} disabled={Boolean(editingResource)}><option value="knowledge">Runbook knowledge</option><option value="log">Log event</option></select></label>
+            <div className="modal-header"><div><span className="eyebrow">{editingResource ? "Update knowledge" : "New guidance"}</span><h2>{editingResource ? "Edit runbook" : "Add guidance"}</h2></div><button type="button" aria-label="Close" onClick={() => { setShowAdd(false); setEditingResource(null); }}><X size={18} /></button></div>
             <label>Title<input name="title" required defaultValue={editingResource?.title ?? ""} placeholder="e.g. Redis connection failures" /></label>
-            <label>Content<textarea name="content" required defaultValue={editingResource?.content ?? ""} placeholder="Paste a runbook instruction or structured log event…" /></label>
+            <label>Content<textarea name="content" required defaultValue={editingResource?.content ?? ""} placeholder="Paste an approved runbook instruction or manufacturing procedure…" /></label>
             <div className="notice"><AlertTriangle size={15} /><span>Review operational data before adding it to the agent’s retrieval index.</span></div>
             <div className="modal-actions"><button type="button" onClick={() => { setShowAdd(false); setEditingResource(null); }}>Cancel</button><button type="submit" className="primary-button">{editingResource ? <Pencil size={15} /> : <Plus size={15} />}{editingResource ? "Update and re-index" : "Add source"}</button></div>
           </form>
+        </div>
+      )}
+
+      {approvalRequest && (
+        <div className="modal-backdrop" role="presentation">
+          <section className="modal approval-modal" role="dialog" aria-modal="true" aria-labelledby="approval-title">
+            <div className="modal-header"><div><span className="eyebrow">Human approval required</span><h2 id="approval-title">Approve {approvalRequest.request.toolName}?</h2></div></div>
+            <p className="approval-rationale">{approvalRequest.request.rationale}</p>
+            <span className="block-label">Proposed tool input</span>
+            <pre>{JSON.stringify(approvalRequest.request.input, null, 2)}</pre>
+            <div className="notice"><ShieldCheck size={15} /><span>The agent is paused. No action happens until you approve this exact payload.</span></div>
+            <div className="modal-actions"><button type="button" disabled={isResolvingApproval} onClick={() => void resolveApproval(false)}>Reject</button><button type="button" className="primary-button" disabled={isResolvingApproval} onClick={() => void resolveApproval(true)}><Check size={15} />Approve action</button></div>
+          </section>
         </div>
       )}
     </main>

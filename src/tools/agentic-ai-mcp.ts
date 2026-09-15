@@ -37,7 +37,7 @@ export const orchestrateAgenticApi: Tool = {
   definition: {
     name: "orchestrateAgenticApi",
     description:
-      "Use Agentic AI through its MCP server for fleet, aircraft, customer, delivery, and maintenance questions.",
+      "Use Agentic AI through MCP to search customer, fleet, maintenance, production-order, delivery, aircraft-update, and pilot-training microservices.",
     inputSchema: {
       type: "object",
       required: ["question"],

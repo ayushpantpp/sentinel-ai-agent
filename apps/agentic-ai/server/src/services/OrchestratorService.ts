@@ -113,7 +113,7 @@ export class OrchestratorService {
   private resolveInputs(step: PlanStep, results: ApiCallResult[]): Record<string, string>[] {
     if (Object.keys(step.input).length > 0 || step.apiId === "fleet-all") return [step.input];
     const find = (id: string) => results.filter((result) => result.apiId === id);
-    if (step.apiId === "fleet-by-customer" || step.apiId === "deliveries-by-customer") return find("customer-search").flatMap((result) => records(result.data).map((item) => ({ customerId: String(item.id) })));
+    if (["fleet-by-customer", "deliveries-by-customer", "production-orders-by-customer", "pilot-training-by-customer"].includes(step.apiId)) return find("customer-search").flatMap((result) => records(result.data).map((item) => ({ customerId: String(item.id) })));
     if (step.apiId === "maintenance-by-aircraft") return find("fleet-all").flatMap((result) => records(result.data).map((item) => ({ aircraftId: String(item.id) })));
     return [step.input];
   }

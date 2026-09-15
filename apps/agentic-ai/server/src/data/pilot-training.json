@@ -1,0 +1,7 @@
+[
+  {"id":"trn-3001","pilotId":"p-100","pilotName":"Anna Weber","customerId":"c_lh","aircraftFamily":"A350","course":"A350 recurrent simulator","status":"overdue","dueDate":"2026-09-05","base":"FRA"},
+  {"id":"trn-3002","pilotId":"p-101","pilotName":"Jonas Klein","customerId":"c_lh","aircraftFamily":"A320","course":"A320neo differences training","status":"due_soon","dueDate":"2026-09-24","base":"MUC"},
+  {"id":"trn-3003","pilotId":"p-200","pilotName":"Sophie de Vries","customerId":"c_klm","aircraftFamily":"A321","course":"A321neo recurrent simulator","status":"due_soon","dueDate":"2026-09-28","base":"AMS"},
+  {"id":"trn-3004","pilotId":"p-201","pilotName":"Daan Bakker","customerId":"c_klm","aircraftFamily":"A330","course":"A330-900 differences training","status":"scheduled","dueDate":"2026-10-10","scheduledDate":"2026-09-26","base":"AMS"},
+  {"id":"trn-3005","pilotId":"p-300","pilotName":"Maya Thompson","customerId":"c_ua","aircraftFamily":"B787","course":"B787 recurrent simulator","status":"overdue","dueDate":"2026-09-09","base":"ORD"}
+]

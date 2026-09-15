@@ -13,7 +13,7 @@ import { pipeline } from "node:stream/promises";
 import { assessPrompt } from "./guardrails/prompt-guard.js";
 import { ToolPolicy, type AgentRole } from "./guardrails/tool-policy.js";
 import { runSentinelGraph } from "./langgraph/workflow.js";
-import type { AgentEvent } from "./agent/react-agent.js";
+import type { AgentEvent, ToolAuthorizationRequest } from "./agent/react-agent.js";
 import { inspectMcpConnections } from "./mcp/connection-manager.js";
 import {
   refreshRunbookEmbeddings,
@@ -24,6 +24,7 @@ import {
 const port = Number(process.env.SENTINEL_API_PORT ?? 8787);
 const runbookDirectory = join(process.cwd(), "data/runbooks");
 const logFile = join(process.cwd(), "data/logs/operations.log");
+const pendingApprovals = new Map<string, (approved: boolean) => void>();
 
 function corsHeaders(contentType = "application/json"): Record<string, string> {
   return {
@@ -196,7 +197,19 @@ async function runAgent(requestBody: Record<string, unknown>, response: ServerRe
 
   const policy = new ToolPolicy({
     role,
-    approve: async () => false
+    approve: (request: ToolAuthorizationRequest) => new Promise<boolean>((resolve) => {
+      const approvalId = crypto.randomUUID();
+      const timer = setTimeout(() => {
+        pendingApprovals.delete(approvalId);
+        resolve(false);
+      }, 120_000);
+      pendingApprovals.set(approvalId, (approved) => {
+        clearTimeout(timer);
+        pendingApprovals.delete(approvalId);
+        resolve(approved);
+      });
+      sendEvent(response, "approval-required", { approvalId, request });
+    })
   });
 
   try {
@@ -249,6 +262,18 @@ createServer(async (request, response) => {
     }
     if (request.method === "POST" && request.url === "/api/agent") {
       await runAgent(await body(request), response);
+      return;
+    }
+    const approvalMatch = request.method === "POST" && request.url?.match(/^\/api\/approvals\/([a-f0-9-]+)$/i);
+    if (approvalMatch) {
+      const fields = await body(request);
+      const resolveApproval = pendingApprovals.get(approvalMatch[1]);
+      if (!resolveApproval) {
+        json(response, 404, { error: "Approval request expired or was already resolved." });
+        return;
+      }
+      resolveApproval(fields.approved === true);
+      json(response, 200, { resolved: true, approved: fields.approved === true });
       return;
     }
     json(response, 404, { error: "Not found." });

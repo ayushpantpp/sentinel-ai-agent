@@ -21,11 +21,12 @@ const rolePermissions: Record<AgentRole, Set<string>> = {
     "searchMemory",
     "calculateSeverity",
     "createMockJira",
-    "createMockSlackNotification"
+    "createMockSlackNotification",
+    "sendMockOwnerNotification"
   ])
 };
 
-const approvalRequired = new Set(["createMockJira", "createMockSlackNotification"]);
+const approvalRequired = new Set(["createMockJira", "createMockSlackNotification", "sendMockOwnerNotification"]);
 
 /**
  * Applies role permissions, duplicate-call protection, and human approval before

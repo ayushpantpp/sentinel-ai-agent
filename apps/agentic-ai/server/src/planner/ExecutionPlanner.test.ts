@@ -38,4 +38,35 @@ describe("ExecutionPlanner", () => {
       }
     ]);
   });
+
+  it("builds a cross-service manufacturing readiness plan", () => {
+    const planner = new ExecutionPlanner(new ApiRegistry());
+    const plan = planner.create({
+      intent: "manufacturing-readiness",
+      entities: {},
+      candidateApis: ["production-orders-all"]
+    }, "Show production orders, pilots due for training, and aircraft updates that need owner notification.");
+
+    expect(plan.steps.map((step) => step.apiId)).toEqual([
+      "customer-search",
+      "production-orders-all",
+      "pilot-training-due",
+      "aircraft-updates-pending"
+    ]);
+  });
+
+  it("scopes production and training records to a named airline", () => {
+    const planner = new ExecutionPlanner(new ApiRegistry());
+    const plan = planner.create({
+      intent: "customer-readiness",
+      entities: { customer: "Lufthansa" },
+      candidateApis: ["production-orders-all", "pilot-training-due"]
+    }, "Show Lufthansa aircraft production orders and pilots due for training.");
+
+    expect(plan.steps.map((step) => step.apiId)).toEqual([
+      "customer-search",
+      "production-orders-by-customer",
+      "pilot-training-by-customer"
+    ]);
+  });
 });

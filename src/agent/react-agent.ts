@@ -138,6 +138,15 @@ function transcript(steps: AgentStep[]): string {
   })), null, 2).slice(-12000);
 }
 
+function extractRecords(value: unknown): Record<string, unknown>[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => extractRecords(item));
+  }
+  if (typeof value !== "object" || value === null) return [];
+  const record = value as Record<string, unknown>;
+  return [record, ...Object.values(record).flatMap((item) => extractRecords(item))];
+}
+
 export function requiredEvidenceDecision(question: string, steps: AgentStep[]): ToolDecision | undefined {
   const usedTools = new Set(steps.map((step) => step.decision.toolName));
   const weatherRequest = /\b(weather|temperature|humidity|rain|wind)\b/i.test(question);
@@ -160,7 +169,7 @@ export function requiredEvidenceDecision(question: string, steps: AgentStep[]): 
       input: { query: question }
     };
   }
-  if (/\b(aircraft|fleet|deliver(?:y|ies)|maintenance)\b/i.test(question)
+  if (/\b(aircraft|fleet|deliver(?:y|ies)|maintenance|production|manufacturing|pilot|training|owner notification)\b/i.test(question)
     && !usedTools.has("orchestrateAgenticApi")) {
     const retrievedLogs = steps
       .filter((step) => step.decision.toolName === "searchLogs")
@@ -187,6 +196,32 @@ export function requiredEvidenceDecision(question: string, steps: AgentStep[]): 
       rationale: "The goal requires Agentic AI orchestration data, which is available through its MCP server.",
       toolName: "orchestrateAgenticApi",
       input: { question, ...(tailNumbers.size ? { tailNumbers: [...tailNumbers] } : {}) }
+    };
+  }
+  const ownerNotificationDenied = /\b(do not|don't|never)\b.{0,50}\b(notify|send)\b.{0,50}\b(owners?|customers?|airlines?)\b/i.test(question);
+  if (!ownerNotificationDenied
+    && /\b(notify|send)\b.{0,60}\b(owners?|customers?|airlines?)\b|\b(owners?|customers?|airlines?)\b.{0,60}\bnotification\b/i.test(question)
+    && !usedTools.has("sendMockOwnerNotification")) {
+    const latestMcpStep = [...steps].reverse().find((step) => step.decision.toolName === "orchestrateAgenticApi");
+    const records = latestMcpStep && typeof latestMcpStep.observation === "object" && latestMcpStep.observation !== null
+      ? extractRecords((latestMcpStep.observation as { data?: unknown }).data)
+      : [];
+    const customers = new Map(records
+      .filter((record) => typeof record.id === "string" && typeof record.name === "string")
+      .map((record) => [record.id as string, record.name as string]));
+    const recipientIds = records
+      .filter((record) => record.notificationStatus === "pending" && typeof record.customerId === "string")
+      .map((record) => record.customerId as string);
+    const recipients = [...new Set(recipientIds.map((id) => customers.get(id) ?? id))];
+    return {
+      type: "tool",
+      rationale: "Owner communication is an external-style action and requires human confirmation of the exact recipients and message.",
+      toolName: "sendMockOwnerNotification",
+      input: {
+        recipients: recipients.length ? recipients : ["affected aircraft owners"],
+        subject: "Aircraft manufacturing status update",
+        message: latestMcpStep?.reflection.summary ?? question
+      }
     };
   }
   const jiraDenied = /\b(do not|don't|never)\b.{0,40}\b(create|open|file)\b.{0,40}\bjira\b/i.test(question);
@@ -314,6 +349,10 @@ export async function reflect(
   onPrompt?: (prompt: LlmPrompt) => void,
   onResponse?: (response: LlmResponse) => void
 ): Promise<Reflection> {
+  const deniedActionReflection = reflectOnDeniedAction(decision, observation, previousSteps);
+  if (deniedActionReflection) return deniedActionReflection;
+  const mockActionReflection = reflectOnMockAction(decision, observation, previousSteps);
+  if (mockActionReflection) return mockActionReflection;
   const combinedFleetReflection = reflectOnCombinedFleetEvidence(
     decision,
     observation,
@@ -358,6 +397,57 @@ export async function reflect(
     sufficient: value.sufficient && canAnswerNow,
     summary: requiredText(value.summary, "summary"),
     nextStep
+  };
+}
+
+function reflectOnMockAction(
+  decision: ToolDecision,
+  observation: unknown,
+  previousSteps: AgentStep[]
+): Reflection | undefined {
+  if (!new Set(["createMockJira", "createMockSlackNotification", "sendMockOwnerNotification"]).has(decision.toolName)
+    || typeof observation !== "object"
+    || observation === null) return undefined;
+  const result = observation as { success?: boolean; data?: unknown };
+  if (!result.success || typeof result.data !== "object" || result.data === null) return undefined;
+  const data = result.data as Record<string, unknown>;
+  if (data.mock !== true) return undefined;
+  const actionSummary = decision.toolName === "createMockJira"
+    ? `Approved mock Jira preview ${String(data.key)} was generated with status ${String(data.status)}. No external Jira ticket was created.`
+    : decision.toolName === "sendMockOwnerNotification"
+      ? `Approved owner-notification preview ${String(data.notificationId)} was generated for ${(data.recipients as unknown[]).join(", ")}. No external airline notification was sent.`
+      : `Approved mock Slack preview for ${String(data.channel)} was generated. No external Slack message was sent.`;
+  const evidenceSummary = previousSteps.at(-1)?.reflection.summary;
+  const summary = evidenceSummary ? `${evidenceSummary} ${actionSummary}` : actionSummary;
+  return {
+    sufficient: true,
+    summary,
+    nextStep: "Report the approved mock action accurately without claiming an external side effect."
+  };
+}
+
+function reflectOnDeniedAction(
+  decision: ToolDecision,
+  observation: unknown,
+  previousSteps: AgentStep[]
+): Reflection | undefined {
+  if (!new Set(["createMockJira", "createMockSlackNotification", "sendMockOwnerNotification"]).has(decision.toolName)
+    || typeof observation !== "object"
+    || observation === null) return undefined;
+  const result = observation as { success?: boolean; error?: unknown };
+  if (result.success !== false || !String(result.error).startsWith("Guardrail denied tool execution:")) {
+    return undefined;
+  }
+  const evidenceSummary = previousSteps.at(-1)?.reflection.summary;
+  const actionSummary = decision.toolName === "createMockJira"
+    ? "The proposed Jira action was rejected. No external Jira ticket was created."
+    : decision.toolName === "sendMockOwnerNotification"
+      ? "The proposed owner notification was rejected. No external airline notification was sent."
+      : "The proposed Slack action was rejected. No external Slack message was sent.";
+  return {
+    sufficient: true,
+    summary: evidenceSummary ? `${evidenceSummary} ${actionSummary}` : actionSummary,
+    nextStep: "Report the rejected action accurately and preserve the evidence already gathered."
   };
 }
 
