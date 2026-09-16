@@ -1,0 +1,18 @@
+[
+  {
+    "id": "airbus-apis",
+    "name": "Airbus APIs",
+    "description": "Aircraft customer, fleet, production, delivery, maintenance, update, and pilot-training services.",
+    "url": "http://127.0.0.1:3001/mcp",
+    "healthUrl": "http://127.0.0.1:3001/health",
+    "access": "read"
+  },
+  {
+    "id": "weather",
+    "name": "Weather",
+    "description": "Current city weather from Open-Meteo through a local MCP server.",
+    "url": "http://127.0.0.1:3002/mcp",
+    "healthUrl": "http://127.0.0.1:3002/health",
+    "access": "read"
+  }
+]

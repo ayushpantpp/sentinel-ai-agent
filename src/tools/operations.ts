@@ -1,5 +1,8 @@
+import { createReadStream } from "node:fs";
 import { appendFile, mkdir, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { createInterface } from "node:readline";
+import { searchRunbooksSemantically } from "../retrieval/runbook-vector-store.js";
 import {
   optionalBoolean,
   optionalNumber,
@@ -7,6 +10,8 @@ import {
   requireString,
   type Tool
 } from "./contracts.js";
+import { orchestrateAirbusApis } from "./agentic-ai-mcp.js";
+import { getWeatherViaMcp } from "./weather-mcp.js";
 
 const runbookDirectory = join(process.cwd(), "data/runbooks");
 const logFile = join(process.cwd(), "data/logs/operations.log");
@@ -55,7 +60,11 @@ export const searchKnowledge: Tool<SearchMatch[]> = {
   },
   async execute(input) {
     const query = requireString(requireObject(input), "query");
-    return searchMarkdown(query);
+    try {
+      return await searchRunbooksSemantically(query);
+    } catch {
+      return searchMarkdown(query);
+    }
   }
 };
 
@@ -73,6 +82,13 @@ export const searchRunbook: Tool<SearchMatch[]> = {
     const fields = requireObject(input);
     const query = requireString(fields, "query");
     const filename = fields.filename === undefined ? undefined : requireString(fields, "filename");
+    if (!filename) {
+      try {
+        return await searchRunbooksSemantically(query);
+      } catch {
+        return searchMarkdown(query);
+      }
+    }
     return searchMarkdown(query, filename);
   }
 };
@@ -85,9 +101,23 @@ export const searchLogs: Tool<string[]> = {
   },
   async execute(input) {
     const query = requireString(requireObject(input), "query");
-    const queryTerms = terms(query);
-    const lines = (await readFile(logFile, "utf8")).split("\n").filter(Boolean);
-    return lines.filter((line) => queryTerms.some((term) => line.toLowerCase().includes(term)));
+    const ranked: Array<{ line: string; score: number }> = [];
+    const lines = createInterface({
+      input: createReadStream(logFile, { encoding: "utf8" }),
+      crlfDelay: Infinity
+    });
+    for await (const line of lines) {
+      if (!line) continue;
+      const score = relevance(query, line);
+      if (score > 0) ranked.push({ line, score });
+    }
+    ranked.sort((left, right) => right.score - left.score);
+    const highestScore = ranked[0]?.score ?? 0;
+    const minimumScore = Math.max(2, highestScore - 2);
+    return ranked
+      .filter((match) => match.score >= minimumScore)
+      .slice(0, 20)
+      .map((match) => match.line);
   }
 };
 
@@ -178,7 +208,41 @@ export const createMockSlackNotification: Tool<Record<string, unknown>> = {
   }
 };
 
+export const sendMockOwnerNotification: Tool<Record<string, unknown>> = {
+  definition: {
+    name: "sendMockOwnerNotification",
+    description: "Build an aircraft-owner notification preview without contacting an airline or messaging provider.",
+    inputSchema: {
+      type: "object",
+      required: ["recipients", "subject", "message"],
+      properties: {
+        recipients: { type: "array", items: { type: "string" } },
+        subject: { type: "string" },
+        message: { type: "string" }
+      }
+    }
+  },
+  async execute(input) {
+    const fields = requireObject(input);
+    const recipients = Array.isArray(fields.recipients)
+      ? fields.recipients.filter((value): value is string => typeof value === "string" && Boolean(value.trim()))
+      : [];
+    if (!recipients.length) throw new Error("At least one aircraft owner is required.");
+    return {
+      mock: true,
+      delivered: false,
+      notificationId: `OWNER-${Math.floor(Date.now() / 1000)}`,
+      recipients,
+      subject: requireString(fields, "subject"),
+      message: requireString(fields, "message"),
+      reason: "Preview only; no external airline notification was sent."
+    };
+  }
+};
+
 export const tools: Tool[] = [
+  orchestrateAirbusApis,
+  getWeatherViaMcp,
   searchKnowledge,
   searchLogs,
   searchRunbook,
@@ -186,5 +250,6 @@ export const tools: Tool[] = [
   searchMemory,
   calculateSeverity,
   createMockJira,
-  createMockSlackNotification
+  createMockSlackNotification,
+  sendMockOwnerNotification
 ];

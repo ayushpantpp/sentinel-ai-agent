@@ -1,0 +1,6 @@
+[
+  {"id":"a320-lh-01","tailNumber":"D-AILA","model":"Airbus A320neo","status":"active","customerId":"c_lh"},
+  {"id":"a350-lh-01","tailNumber":"D-AIXA","model":"Airbus A350-900","status":"maintenance","customerId":"c_lh"},
+  {"id":"b747-lh-01","tailNumber":"D-ABYA","model":"Boeing 747-8","status":"active","customerId":"c_lh"},
+  {"id":"a321-klm-01","tailNumber":"PH-NXA","model":"Airbus A321neo","status":"active","customerId":"c_klm"}
+]

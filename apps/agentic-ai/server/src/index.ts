@@ -1,0 +1,15 @@
+import express from "express";
+import pino from "pino";
+import { env } from "./config/env.js";
+import { mockRouter } from "./mock-services/mockRoutes.js";
+import { ApiRegistry } from "./registry/ApiRegistry.js";
+import { OllamaProvider } from "./llm/OllamaProvider.js";
+import { ApiExecutor } from "./executor/ApiExecutor.js";
+import { ResponseMapper } from "./mapper/ResponseMapper.js";
+import { OrchestratorService } from "./services/OrchestratorService.js";
+import { createOrchestrateRouter } from "./api/routes/orchestrateRoutes.js";
+import { createOrchestratorMcpHandler } from "./mcp/orchestratorMcpServer.js";
+import { errorHandler } from "./middleware/errorHandler.js";
+const logger = pino({ level: env.LOG_LEVEL }); const app = express(); app.use(express.json()); app.use((req, res, next) => { const started = performance.now(); res.on("finish", () => logger.info({ method: req.method, url: req.url, status: res.statusCode, durationMs: Math.round(performance.now() - started) }, "HTTP request completed")); next(); }); app.use("/api/mock", mockRouter);
+const service = new OrchestratorService(new OllamaProvider(env.OLLAMA_URL, env.OLLAMA_MODEL), new ApiRegistry(), new ApiExecutor(`http://localhost:${env.PORT}`, logger), new ResponseMapper(), logger);
+app.get("/health", (_req, res) => res.json({ status: "ok", model: env.OLLAMA_MODEL })); app.post("/mcp", createOrchestratorMcpHandler(service)); app.use("/api", createOrchestrateRouter(service)); app.use(errorHandler); app.listen(env.PORT, () => logger.info(`AI API Orchestrator listening on ${env.PORT}`));

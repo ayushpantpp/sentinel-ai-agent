@@ -1,0 +1,5 @@
+[
+  {"id":"d-200","customerId":"c_airbus","aircraftModel":"A321XLR","quantity":12,"deliveryDate":"2026-09-15","status":"scheduled"},
+  {"id":"d-201","customerId":"c_airbus","aircraftModel":"A350F","quantity":4,"deliveryDate":"2027-02-01","status":"scheduled"},
+  {"id":"d-202","customerId":"c_lh","aircraftModel":"Boeing 787-9","quantity":3,"deliveryDate":"2026-11-12","status":"scheduled"}
+]

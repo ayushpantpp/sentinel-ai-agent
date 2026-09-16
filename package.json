@@ -1,21 +1,29 @@
 {
-  "name": "sentinel-ai",
+  "name": "airbus-intelligence-hub",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "chat": "tsx src/chat.ts",
-    "rag": "tsx src/rag.ts",
-    "tool": "tsx src/tools/cli.ts",
-    "memory": "tsx src/memory/cli.ts",
-    "agent": "tsx src/agent/cli.ts",
-    "plan": "tsx src/planning/cli.ts",
-    "typecheck": "tsc --noEmit"
+    "api": "tsx src/server.ts",
+    "agentic:mcp": "npm --prefix apps/agentic-ai run dev -w server",
+    "web": "npm --prefix web run dev",
+    "weather:mcp": "tsx src/mcp/weather-server.ts",
+    "dev": "concurrently -n api,web,agentic,weather -c blue,magenta,yellow,cyan \"npm run api\" \"npm run web\" \"npm run agentic:mcp\" \"npm run weather:mcp\"",
+    "setup": "npm install && npm --prefix web install && npm --prefix apps/agentic-ai install",
+    "typecheck": "tsc --noEmit",
+    "test:agent": "tsx --test src/**/*.test.ts",
+    "test": "npm run typecheck && npm run test:agent && npm --prefix apps/agentic-ai test && npm --prefix web test && npm --prefix web run lint"
   },
   "dependencies": {
-    "chromadb": "^3.5.0"
+    "@langchain/langgraph": "^1.4.8",
+    "@modelcontextprotocol/client": "^2.0.0-beta.4",
+    "@modelcontextprotocol/node": "^2.0.0-beta.4",
+    "@modelcontextprotocol/server": "^2.0.0-beta.4",
+    "chromadb": "^3.5.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "concurrently": "^9.2.1",
     "tsx": "^4.20.0",
     "typescript": "^5.8.0"
   }

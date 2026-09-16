@@ -1,0 +1,15 @@
+services:
+  orchestrator:
+    build: .
+    ports: ["3001:3001"]
+    environment:
+      PORT: 3001
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: phi4-mini
+    depends_on: [ollama]
+  ollama:
+    image: ollama/ollama:latest
+    ports: ["11434:11434"]
+    volumes: ["ollama-data:/root/.ollama"]
+volumes:
+  ollama-data:
